@@ -1,0 +1,52 @@
+[package]
+name = "terrafolk_bevy"
+version = "0.1.0"
+publish = false
+edition = "2024"
+exclude = ["dist", "build", "assets", "credits"]
+
+[workspace]
+members = ["mobile"]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
+# trunk 가 커스텀 프로파일을 못 쓰는 관계(https://github.com/trunk-rs/trunk/issues/605)
+# release = 웹 배포 프로파일(크기 우선). dist = 네이티브 배포(성능 우선).
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dist]
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[features]
+dev = [
+    "bevy/dynamic_linking",
+]
+
+[dependencies]
+bevy = { version = "0.20.0", default-features = false, features = [
+    "3d",
+    "png",
+    "bevy_asset",
+    "sysinfo_plugin",
+] }
+
+# keep the following in sync with Bevy's dependencies (main.rs 창 아이콘)
+winit = { version = "0.30", default-features = false }
+image = { version = "0.25", default-features = false }
+## WGPU trace! 호출이 많아 log 디버그 레벨 필요
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"] }
+
+[build-dependencies]
+embed-resource = "1"

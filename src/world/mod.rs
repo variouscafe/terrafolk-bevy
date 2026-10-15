@@ -1,11 +1,13 @@
 //! 월드 — 데모 결정론 데이터 + 2.5D 아이소 렌더(스플랫 지형·3D 소품·하루순환·수면).
 //! 계약: 서버는 정사각 그리드를 주고 클라이언트가 투영(docs/data-contract.md).
 
+pub mod cam_follow;
 pub mod camera_input;
 pub mod camera_rig;
 pub mod data;
 pub mod daynight;
 pub mod models;
+pub mod pick;
 pub mod precip;
 pub mod splat;
 pub mod terrain;
@@ -32,6 +34,9 @@ impl Plugin for WorldPlugin {
             .insert_resource(precip::PrecipRig::default())
             .insert_resource(camera_rig::CameraRig::default())
             .insert_resource(camera_input::PointerInput::default())
+            .insert_resource(pick::Selection::default())
+            .insert_resource(pick::SelectBridge::default())
+            .insert_resource(cam_follow::CamFollow::default())
             .add_systems(
                 Startup,
                 (
@@ -41,6 +46,8 @@ impl Plugin for WorldPlugin {
                     daynight::spawn_sun,
                     models::spawn_props,
                     villager::spawn_villagers,
+                    pick::spawn_ring,
+                    pick::register_bridge,
                 ),
             )
             .add_systems(
@@ -57,6 +64,8 @@ impl Plugin for WorldPlugin {
                     models::flicker_campfires,
                     villager::wander,
                     villager::animate_walk_idle,
+                    (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
+                    cam_follow::follow_camera,
                     debug_screenshot,
                 ),
             );
@@ -78,7 +87,9 @@ fn debug_screenshot(
         *done = true;
         commands
             .spawn(bevy::render::view::screenshot::Screenshot::primary_window())
-            .observe(bevy::render::view::screenshot::save_to_disk("/tmp/tf_native_shot.png"));
+            .observe(bevy::render::view::screenshot::save_to_disk(
+                "/tmp/tf_native_shot.png",
+            ));
     }
 }
 

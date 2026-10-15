@@ -68,7 +68,9 @@ pub fn apply_wind(
         visited.clear();
         visited.push(root_e);
         while let Some(e) = visited.pop() {
-            let Ok((children, mat)) = q_walk.get(e) else { continue };
+            let Ok((children, mat)) = q_walk.get(e) else {
+                continue;
+            };
             if let Some(mat) = mat {
                 let handle = cache
                     .entry(mat.id())

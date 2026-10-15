@@ -6,7 +6,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
-use super::data::{WorldData, STEP, WATER_BED_Y};
+use super::data::{STEP, WATER_BED_Y, WorldData};
 use super::splat::TerrainMaterial;
 
 const TILE: f32 = 1.0;
@@ -68,13 +68,7 @@ struct MeshData {
     indices: Vec<u32>,
 }
 
-fn push_vertex(
-    m: &mut MeshData,
-    p: [f32; 3],
-    n: [f32; 3],
-    uv: [f32; 2],
-    w: [f32; 5],
-) {
+fn push_vertex(m: &mut MeshData, p: [f32; 3], n: [f32; 3], uv: [f32; 2], w: [f32; 5]) {
     m.positions.push(p);
     m.normals.push(n);
     m.uvs.push(uv);
@@ -82,13 +76,20 @@ fn push_vertex(
     m.weights2.push([w[3], w[4]]);
 }
 
-fn push_quad(m: &mut MeshData, quad: [[f32; 3]; 4], n: [f32; 3], uvs: [[f32; 2]; 4], ws: [[f32; 5]; 4]) {
+fn push_quad(
+    m: &mut MeshData,
+    quad: [[f32; 3]; 4],
+    n: [f32; 3],
+    uvs: [[f32; 2]; 4],
+    ws: [[f32; 5]; 4],
+) {
     let base = m.positions.len() as u32;
     for i in 0..4 {
         push_vertex(m, quad[i], n, uvs[i], ws[i]);
     }
     // 와인딩은 cull_mode None으로 방어(정적 지형)
-    m.indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
+    m.indices
+        .extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
 }
 
 /// 지형 메시 태그 — 라이브 전환 시 일괄 제거용.
@@ -103,11 +104,7 @@ pub fn spawn_terrain(
     mut materials: ResMut<Assets<TerrainMaterial>>,
 ) {
     let (mesh_h, mat_h) = build_terrain(&world, &assets, &mut meshes, &mut materials);
-    commands.spawn((
-        TerrainMesh,
-        Mesh3d(mesh_h),
-        MeshMaterial3d(mat_h),
-    ));
+    commands.spawn((TerrainMesh, Mesh3d(mesh_h), MeshMaterial3d(mat_h)));
 }
 
 /// 라이브 지형 스폰(프라임 전환용) — 데모와 동일 빌더·마커.
@@ -119,11 +116,7 @@ pub fn spawn_live_terrain(
     materials: &mut Assets<TerrainMaterial>,
 ) {
     let (mesh_h, mat_h) = build_terrain(world, assets, meshes, materials);
-    commands.spawn((
-        TerrainMesh,
-        Mesh3d(mesh_h),
-        MeshMaterial3d(mat_h),
-    ));
+    commands.spawn((TerrainMesh, Mesh3d(mesh_h), MeshMaterial3d(mat_h)));
 }
 
 fn build_terrain(
@@ -215,10 +208,22 @@ fn build_terrain(
                     };
                     // 수직면 UV — 수평축(자기축) + 높이
                     let uvs: [[f32; 2]; 4] = [
-                        [if u_axis == 0.0 { q[0][2] } else { q[0][0] } * UV_SCALE, q[0][1] * UV_SCALE * 0.8],
-                        [if u_axis == 0.0 { q[1][2] } else { q[1][0] } * UV_SCALE, q[1][1] * UV_SCALE * 0.8],
-                        [if u_axis == 0.0 { q[2][2] } else { q[2][0] } * UV_SCALE, q[2][1] * UV_SCALE * 0.8],
-                        [if u_axis == 0.0 { q[3][2] } else { q[3][0] } * UV_SCALE, q[3][1] * UV_SCALE * 0.8],
+                        [
+                            if u_axis == 0.0 { q[0][2] } else { q[0][0] } * UV_SCALE,
+                            q[0][1] * UV_SCALE * 0.8,
+                        ],
+                        [
+                            if u_axis == 0.0 { q[1][2] } else { q[1][0] } * UV_SCALE,
+                            q[1][1] * UV_SCALE * 0.8,
+                        ],
+                        [
+                            if u_axis == 0.0 { q[2][2] } else { q[2][0] } * UV_SCALE,
+                            q[2][1] * UV_SCALE * 0.8,
+                        ],
+                        [
+                            if u_axis == 0.0 { q[3][2] } else { q[3][0] } * UV_SCALE,
+                            q[3][1] * UV_SCALE * 0.8,
+                        ],
                     ];
                     let ws = [wl; 4];
                     push_quad(&mut m, q, outward, uvs, ws);
@@ -229,7 +234,10 @@ fn build_terrain(
 
     let verts = m.positions.len();
     let _ = verts;
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, m.positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, m.uvs);

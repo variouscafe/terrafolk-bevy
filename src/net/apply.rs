@@ -33,8 +33,12 @@ pub fn prime_live_world(
     if *primed || net.status != NetStatus::Connected {
         return;
     }
-    let Some(frame) = net.frame.as_ref() else { return };
-    let Some(map_json) = frame.map.as_ref() else { return };
+    let Some(frame) = net.frame.as_ref() else {
+        return;
+    };
+    let Some(map_json) = frame.map.as_ref() else {
+        return;
+    };
     let Ok(map) = serde_json::from_str::<TiledMap>(map_json) else {
         warn!("[net] mapJson 파싱 실패");
         return;
@@ -59,11 +63,26 @@ pub fn prime_live_world(
     // 라이브 데이터로 교체 — GID 그리드, 평면 고도
     *world = WorldData::from_map(&map.layers[0].data, map.width, map.height);
 
-    crate::world::terrain::spawn_live_terrain(&mut commands, &world, &assets, &mut meshes, &mut terrain_mats);
-    crate::world::water::spawn_live_water(&mut commands, &world, &mut meshes, &mut water_mats, &mut images);
+    crate::world::terrain::spawn_live_terrain(
+        &mut commands,
+        &world,
+        &assets,
+        &mut meshes,
+        &mut terrain_mats,
+    );
+    crate::world::water::spawn_live_water(
+        &mut commands,
+        &world,
+        &mut meshes,
+        &mut water_mats,
+        &mut images,
+    );
 
     // map은 1회 소비(이후 프레임에서 중복 파싱 방지)
-    net.frame = Some(LiveFrame { map: None, ..frame.clone() });
+    net.frame = Some(LiveFrame {
+        map: None,
+        ..frame.clone()
+    });
 }
 
 /// 서버 시간 → DayTime(로컬 진행 정지 — 서버가 정본) + 일출/일몰·날씨.
@@ -188,7 +207,9 @@ pub fn sync_resources(
     if net.status != NetStatus::Connected {
         return;
     }
-    let Some(frame) = net.frame.as_ref() else { return };
+    let Some(frame) = net.frame.as_ref() else {
+        return;
+    };
 
     // 갱신·제거 — 서명이 바뀌면 despawn(다음 프레임 새 시각으로 재스폰)
     for (e, tag, meta, _) in &mut q_live {
@@ -259,7 +280,9 @@ pub fn sync_resources(
                 scale_jitter: 1.0,
                 variants,
             },
-            bevy::world_serialization::WorldAssetRoot(crate::world::models::prop_scene(kind, &assets)),
+            bevy::world_serialization::WorldAssetRoot(crate::world::models::prop_scene(
+                kind, &assets,
+            )),
             LiveResourceTag(r.id),
             LiveResMeta(sig),
             Transform::from_translation(Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5)),
@@ -273,12 +296,19 @@ pub fn sync_agents(
     net: Res<NetState>,
     world: Res<WorldData>,
     assets: Res<AssetServer>,
-    mut q_live: Query<(Entity, &LiveAgentTag, &Transform, &mut crate::world::villager::Villager)>,
+    mut q_live: Query<(
+        Entity,
+        &LiveAgentTag,
+        &Transform,
+        &mut crate::world::villager::Villager,
+    )>,
 ) {
     if net.status != NetStatus::Connected {
         return;
     }
-    let Some(frame) = net.frame.as_ref() else { return };
+    let Some(frame) = net.frame.as_ref() else {
+        return;
+    };
 
     // 갱신·제거
     for (e, tag, tr, mut v) in &mut q_live {
@@ -329,7 +359,11 @@ pub fn sync_agents(
 /// 라이브 주민 이동 — 서버 목적지로 등속 이동 + 이동 방향 회전.
 pub fn live_move(
     time: Res<Time>,
-    mut q: Query<(&LiveAgentTag, &mut Transform, &mut crate::world::villager::Villager)>,
+    mut q: Query<(
+        &LiveAgentTag,
+        &mut Transform,
+        &mut crate::world::villager::Villager,
+    )>,
 ) {
     const SPEED: f32 = 1.2; // 타일/초(서버 배회 속도 근사)
     for (_, mut tr, mut v) in &mut q {

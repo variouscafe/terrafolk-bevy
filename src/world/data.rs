@@ -114,8 +114,8 @@ fn fbm(x: f32, y: f32, base_period: f32, seed: u32) -> f32 {
 
 #[derive(Resource)]
 pub struct WorldData {
-    pub terrain: Vec<u8>,  // size*size, GID 1..6
-    pub height: Vec<i8>,   // size*size, 단계(물 -2, 육지 0..4)
+    pub terrain: Vec<u8>, // size*size, GID 1..6
+    pub height: Vec<i8>,  // size*size, 단계(물 -2, 육지 0..4)
     pub props: Vec<PropSpec>,
     pub size: usize,
     /// 데모(절차) 지형 여부 — false면 라이브(mapJson) 지형
@@ -157,7 +157,13 @@ impl WorldData {
                 height[i] = -2;
             }
         }
-        WorldData { terrain, height, props: vec![], size: n, demo: false }
+        WorldData {
+            terrain,
+            height,
+            props: vec![],
+            size: n,
+            demo: false,
+        }
     }
 
     pub fn walkable(&self, x: i32, y: i32) -> bool {
@@ -202,7 +208,13 @@ impl WorldData {
         }
 
         // 소품 산포 — 결정론. 지형별 밀도(페인티드 군락 감각).
-        let probe = Self { terrain: terrain.clone(), height: height.clone(), props: vec![], size: SIZE, demo: true };
+        let probe = Self {
+            terrain: terrain.clone(),
+            height: height.clone(),
+            props: vec![],
+            size: SIZE,
+            demo: true,
+        };
         let mut rng = Rng::new(seed ^ 0x5EED);
         let mut props = Vec::new();
         for y in 2..SIZE - 2 {
@@ -211,7 +223,11 @@ impl WorldData {
                 let r = rng.f32();
                 let p = |kind, x, y| PropSpec { kind, x, y };
                 if t == "forest" && r < 0.34 {
-                    let kind = if rng.f32() < 0.55 { PropKind::TreePine } else { PropKind::TreeBroadleaf };
+                    let kind = if rng.f32() < 0.55 {
+                        PropKind::TreePine
+                    } else {
+                        PropKind::TreeBroadleaf
+                    };
                     props.push(p(kind, x, y));
                 } else if t == "forest" && r < 0.37 {
                     props.push(p(PropKind::TreeSapling, x, y));
@@ -258,6 +274,12 @@ impl WorldData {
             props.push(PropSpec { kind, x: ox, y: oy });
         }
 
-        WorldData { terrain, height, props, size: SIZE, demo: true }
+        WorldData {
+            terrain,
+            height,
+            props,
+            size: SIZE,
+            demo: true,
+        }
     }
 }

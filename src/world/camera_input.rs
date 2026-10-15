@@ -142,12 +142,20 @@ impl PointerInput {
                 match self.pinch {
                     Some(ref mut p) if p.id0 == id0 && p.id1 == id1 && p.dist > 1.0 => {
                         // 진행 핀치 — 거리 비로 줌(클램프 0.55~1.8, 상용 체감)
-                        pinch_zoom = (p.dist / dist).clamp(super::camera_rig::PINCH_FRAME_MIN, super::camera_rig::PINCH_FRAME_MAX);
+                        pinch_zoom = (p.dist / dist).clamp(
+                            super::camera_rig::PINCH_FRAME_MIN,
+                            super::camera_rig::PINCH_FRAME_MAX,
+                        );
                         p.dist = dist;
                     }
                     _ => {
                         // 신규·구성 변경 → 앵커 재설정(점프 없음), 관성 정지
-                        self.pinch = Some(PinchState { id0, id1, dist, centroid_grab: None });
+                        self.pinch = Some(PinchState {
+                            id0,
+                            id1,
+                            dist,
+                            centroid_grab: None,
+                        });
                         self.stop_inertia();
                     }
                 }
@@ -159,7 +167,11 @@ impl PointerInput {
 
     /// 제스처 종료 공통 — 속도 EMA가 관문을 넘으면 관성으로 전환.
     fn release(&mut self) {
-        self.inertia = if self.vel.length() > INERTIA_FLING_MIN { self.vel } else { Vec2::ZERO };
+        self.inertia = if self.vel.length() > INERTIA_FLING_MIN {
+            self.vel
+        } else {
+            Vec2::ZERO
+        };
         self.vel = Vec2::ZERO;
     }
 
@@ -255,6 +267,9 @@ impl PointerInput {
             }
         }
 
-        PanFrame { pan, gesture_active }
+        PanFrame {
+            pan,
+            gesture_active,
+        }
     }
 }

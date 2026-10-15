@@ -29,7 +29,11 @@ impl Default for DayTime {
 pub struct Sun;
 
 fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
-    [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+    [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+        a[2] + (b[2] - a[2]) * t,
+    ]
 }
 
 pub fn spawn_sun(mut commands: Commands) {
@@ -71,7 +75,7 @@ pub fn apply_sky(
     };
     let dusk_w = ((1.0 - (day_t - 0.06).abs() * 7.0).clamp(0.0, 1.0)
         + (1.0 - (day_t - 0.94).abs() * 7.0).clamp(0.0, 1.0))
-        .clamp(0.0, 1.0);
+    .clamp(0.0, 1.0);
     day.night_factor = night;
 
     // 태양 배치 — 고도·방위각 구면 위치에서 원점 look_at

@@ -1,5 +1,9 @@
 body, html {
     height: 100%;
+    /* 모바일 브라우저 제스처 차단 — 풀투리프레시·룸버밴딩·페이지 핀치줌.
+       canvas는 게임이 소비하므로 문서 레벨 오버스크롤을 전부 끈다. */
+    overscroll-behavior: none;
+    touch-action: none;
 }
 
 body {
@@ -50,4 +54,10 @@ body {
 
 #bevy {
     z-index: 2;
+    /* 캔버스 터치는 전부 게임(팬·핀치) — 브라우저 기본 제스처 금지.
+       더블탭 줌·길게 눌러 선택도 함께 차단된다. */
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
 }

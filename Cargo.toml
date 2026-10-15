@@ -36,7 +36,7 @@ dev = [
 ]
 
 [dependencies]
-bevy = { version = "0.20.0", default-features = false, features = [
+bevy = { version = "0.19.1", default-features = false, features = [
     "3d",
     "png",
     "bevy_asset",
@@ -50,3 +50,6 @@ log = { version = "0.4", features = ["max_level_debug", "release_max_level_warn"
 
 [build-dependencies]
 embed-resource = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"

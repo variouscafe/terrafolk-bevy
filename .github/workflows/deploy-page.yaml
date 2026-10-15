@@ -18,7 +18,7 @@ jobs:
         with:
           toolchain: stable
       - name: Install Dependencies
-        run: sudo apt-get update; sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev
+        run: sudo apt-get update; sudo apt-get install g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-x11-0 libwayland-dev binaryen
       - name: Install trunk
         uses: jetli/trunk-action@v0.4.0
         with:
@@ -30,9 +30,14 @@ jobs:
         run: |
           trunk build --release
       - name: optimize Wasm
-        uses: NiklasEi/wasm-opt-action@v2
-        with:
-          file: dist/*.wasm
+        # --all-features 금지 — 브라우저 미지원 proposal 활성화로 wasm 손상(instantiate 실패) 경험.
+        # rustc 표준 프로포절만 명시적으로 활성화한다.
+        run: |
+          for f in dist/*_bg.wasm; do
+            wasm-opt -Oz --enable-bulk-memory --enable-reference-types --enable-simd \
+              --enable-nontrapping-float-to-int --enable-sign-ext --enable-multivalue \
+              --enable-mutable-globals --strip-debug --strip-producers -o "$f.opt" "$f" && mv "$f.opt" "$f"
+          done
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4.2.5
         with:

@@ -91,7 +91,7 @@ pub fn spawn_villagers(
             continue;
         }
         let pos = Vec3::new(x as f32 + 0.5, world.height_at(x, y) + 0.7, y as f32 + 0.5);
-        let mesh = Mesh::from(bevy::shape::Rectangle::new(32.0 * 0.014, 48.0 * 0.014));
+        let mesh = Mesh::from(bevy::math::primitives::Rectangle::new(32.0 * 0.028, 48.0 * 0.028));
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
@@ -130,7 +130,7 @@ pub fn wander(time: Res<Time>, world: Res<WorldData>, mut q: Query<(&mut Village
             if v.t >= 1.0 {
                 v.t = 0.0;
                 v.moving = false;
-                v.idle = 0.4 + (v.t * 0.0) + rand_free(2.0);
+                v.idle = 0.4 + rand_free((time.elapsed_secs() * 1000.0) as u64 ^ (tr.translation.x as u64).wrapping_mul(31), 2.0);
                 tr.translation = v.to;
             } else {
                 let s = v.t * v.t * (3.0 - 2.0 * v.t); // smoothstep
@@ -171,19 +171,15 @@ pub fn wander(time: Res<Time>, world: Res<WorldData>, mut q: Query<(&mut Village
             }
         }
         if !v.moving {
-            v.idle = rand_free(1.0);
+            v.idle = rand_free((time.elapsed_secs() * 1000.0) as u64 ^ (here.0 as u64 * 31 + here.1 as u64), 1.5);
         }
     }
 }
 
-/// 시간 기반 자유 난수(배회 휴식 길이) — 결정론 대상 아님(연출)
-fn rand_free(scale: f32) -> f32 {
-    let n = (std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos() as u64)
-        .unwrap_or(7))
-        .wrapping_mul(2654435761);
-    ((n >> 33) as f32 / 2147483648.0) * scale
+/// 시간 기반 자유 난수(배회 휴식 길이) — 결정론 대상 아님(연출).
+/// wasm엔 SystemTime이 없어 bevy Time 엔트로피를 시드로 쓴다.
+fn rand_free(seed: u64, scale: f32) -> f32 {
+    super::data::Rng::new(seed.wrapping_mul(2654435761)).f32() * scale
 }
 
 pub fn animate(

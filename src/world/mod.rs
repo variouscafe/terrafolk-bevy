@@ -16,9 +16,12 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(bevy::pbr::MaterialPlugin::<water::WaterMaterial>::default());
+        app.init_asset::<water::WaterMaterial>();
         app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
+            .insert_resource(camera_rig::CameraRig::default())
             .add_systems(
                 Startup,
                 (

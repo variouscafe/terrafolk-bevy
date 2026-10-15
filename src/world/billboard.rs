@@ -27,7 +27,7 @@ pub fn spawn_billboard(
 ) -> Entity {
     let w = w_px * pixel;
     let h = h_px * pixel;
-    let mesh = Mesh::from(bevy::shape::Rectangle::new(w / 2.0, h / 2.0));
+    let mesh = Mesh::from(bevy::math::primitives::Rectangle::new(w, h));
     let ground = world.height_at(x as i32, y as i32);
     commands
         .spawn((

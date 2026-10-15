@@ -28,7 +28,7 @@ impl Material for WaterMaterial {
 
 pub fn spawn_water(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<WaterMaterial>>) {
     let size = SIZE as f32;
-    let mesh = Mesh::from(bevy::shape::Plane3d::new(Vec3::Y, Vec2::splat(size / 2.0)));
+    let mesh = Mesh::from(bevy::math::primitives::Plane3d::new(Vec3::Y, Vec2::splat(size / 2.0)));
     commands.spawn((
         Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(WaterMaterial {

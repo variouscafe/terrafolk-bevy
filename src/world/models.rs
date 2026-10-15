@@ -200,7 +200,7 @@ pub fn spawn_props(mut commands: Commands, world: Res<WorldData>, assets: Res<As
 }
 
 /// 메시 POSITION 속성에서 AABB(GPU 미추출 독립 — final_aabb는 추출 후에만 존재).
-fn mesh_aabb(mesh: &Mesh) -> Option<(Vec3, Vec3)> {
+pub fn mesh_aabb(mesh: &Mesh) -> Option<(Vec3, Vec3)> {
     let vals = mesh.attribute(bevy::render::mesh::Mesh::ATTRIBUTE_POSITION)?;
     let VertexAttributeValues::Float32x3(pts) = vals else {
         return None;
@@ -216,7 +216,7 @@ fn mesh_aabb(mesh: &Mesh) -> Option<(Vec3, Vec3)> {
 }
 
 /// 핏 측정용 쿼리 타입
-type FitQuery<'w, 's> = Query<
+pub type FitQuery<'w, 's> = Query<
     'w,
     's,
     (
@@ -251,7 +251,7 @@ fn chain_matrix(entity: Entity, root_e: Entity, q: &FitQuery<'_, '_>) -> Mat4 {
 }
 
 /// 유지 메시들의 결합 AABB — 각 메시를 체인 행렬로 루트 로컬 공간으로.
-fn meshes_aabb(
+pub fn meshes_aabb(
     ents: &[Entity],
     root_e: Entity,
     q: &FitQuery<'_, '_>,

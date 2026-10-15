@@ -1,7 +1,6 @@
 //! 월드 — 데모 결정론 데이터 + 2.5D 아이소 렌더(스플랫 지형·3D 소품·하루순환·수면).
 //! 계약: 서버는 정사각 그리드를 주고 클라이언트가 투영(docs/data-contract.md).
 
-pub mod billboard;
 pub mod camera_rig;
 pub mod data;
 pub mod daynight;
@@ -12,7 +11,6 @@ pub mod villager;
 pub mod water;
 pub mod wind;
 
-use bevy::image::ImageSampler;
 use bevy::pbr::MaterialPlugin;
 use bevy::prelude::*;
 
@@ -28,7 +26,6 @@ impl Plugin for WorldPlugin {
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
             .insert_resource(camera_rig::CameraRig::default())
-            .insert_resource(PixelTextures::default())
             .add_systems(
                 Startup,
                 (
@@ -51,8 +48,7 @@ impl Plugin for WorldPlugin {
                     wind::apply_wind,
                     models::flicker_campfires,
                     villager::wander,
-                    villager::animate,
-                    enforce_pixel_sampling,
+                    villager::animate_walk_idle,
                     debug_screenshot,
                 ),
             );
@@ -80,24 +76,3 @@ fn debug_screenshot(
 
 #[cfg(target_arch = "wasm32")]
 fn debug_screenshot() {}
-
-/// 픽셀아트 텍스처 목록(주민 스프라이트) — nearest 샘플링 대상.
-/// 3D GLB·지형 텍스처는 선형(페인티드)이라 전역 강제를 폐지했다.
-#[derive(Resource, Default)]
-pub struct PixelTextures(pub Vec<Handle<Image>>);
-
-/// 등록된 픽셀 텍스처만 nearest로 1회 교체(재업로드 없음).
-fn enforce_pixel_sampling(
-    pixel: Res<PixelTextures>,
-    mut images: ResMut<Assets<Image>>,
-) {
-    if pixel.is_added() || pixel.is_changed() {
-        for h in &pixel.0 {
-            if let Some(mut img) = images.get_mut(h.id()) {
-                if matches!(img.sampler, ImageSampler::Default) {
-                    img.sampler = ImageSampler::nearest();
-                }
-            }
-        }
-    }
-}

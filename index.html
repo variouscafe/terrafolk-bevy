@@ -9,11 +9,20 @@
         <link data-trunk rel="copy-file" href="build/windows/icon.ico"/>
         <link rel="icon" href="icon.ico">
         <link data-trunk rel="inline" href="build/web/styles.css"/>
+        <link data-trunk rel="inline" href="assets/web/tf-ui.css"/>
     </head>
     <body>
         <link data-trunk rel="inline" href="build/web/sound.js"/>
         <script src="assets/web/colyseus.js"></script>
         <script src="assets/web/worldsim.js"></script>
+        <script src="assets/web/ui.js"></script>
+        <!-- ☰ 메뉴·중앙 팝업 DOM UI — 사전·어휘(tf-data) → i18n(tf-i18n) →
+             LPC 외형·아이콘 합성(tf-look) → UI 본체(tf-ui). worldsim이 DOMContentLoaded
+             에 접속·백로그 시딩을 시작하므로 head 로드로 충분하다. -->
+        <script src="assets/web/tf-data.js"></script>
+        <script src="assets/web/tf-i18n.js"></script>
+        <script src="assets/web/tf-look.js"></script>
+        <script src="assets/web/tf-ui.js"></script>
         <div class="game-container">
             <div class="lds-dual-ring"></div>
             <canvas id="bevy">

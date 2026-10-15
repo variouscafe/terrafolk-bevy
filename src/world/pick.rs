@@ -25,6 +25,9 @@ pub struct Selection {
     pub id: Option<String>,
     /// 선택된 주민 엔티티 — cam_follow(추적)·링 위치가 함께 읽는다
     pub entity: Option<Entity>,
+    /// 선택 사건 카운터 — 같은 id 재선택(씬 재클릭)도 cam_follow 재개 트리거로
+    /// 구분되게 한다(id만으론 변화 판정 불가)
+    pub epoch: u32,
 }
 
 /// 발밑 선택 링 표식
@@ -105,6 +108,7 @@ pub fn drain_select(
         .as_deref()
         .and_then(|want| q.iter().find(|(_, t)| t.0 == want).map(|(e, _)| e));
     if sel.entity.is_some() {
+        sel.epoch = sel.epoch.wrapping_add(1);
         notify_pick(sel.id.as_deref());
     }
 }
@@ -177,6 +181,7 @@ pub fn pick_agent(
         Some((_, e, id)) => {
             sel.id = Some(id);
             sel.entity = Some(e);
+            sel.epoch = sel.epoch.wrapping_add(1);
             notify_pick(sel.id.as_deref());
         }
         None => {
@@ -283,3 +288,21 @@ fn notify_ground(x: f32, z: f32) {
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)] // wasm 빌드에서만 호출되는 스텁
 fn notify_ground(_x: f32, _z: f32) {}
+
+/// DOM 입력 포커스 여부 — winit keydown은 window에 붙어 채팅 입력 키도
+/// Bevy에 오므로(ui.js의 tf.uiTyping), 타이핑 중 팬/줌/추적 해제를 막는다.
+pub fn ui_typing() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::prelude::*;
+        web_sys::window()
+            .and_then(|w| js_sys::Reflect::get(&w.into(), &"terrafolk".into()).ok())
+            .and_then(|tf| js_sys::Reflect::get(&tf, &"uiTyping".into()).ok())
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}

@@ -28,29 +28,34 @@ pub fn follow_camera(
     sel: Res<Selection>,
     q: Query<&Transform, With<Villager>>,
     mut last_sel: Local<Option<String>>,
+    mut last_epoch: Local<u32>,
 ) {
-    // 선택 변화 → 추적 재개(같은 대상 재선택도 카메라를 데려온다).
+    // 선택 변화 → 추적 재개(같은 대상 재선택도 카메라를 데려온다). epoch은
+    // 같은 id의 씬 재클릭도 재선택 사건으로 구분하게 해 준다(id만으론 불가).
     // 재개 프레임은 해제 검사를 건너뛴다 — 씬 픽 클릭의 just_pressed가
     // 같은 프레임에 추적을 꺼버리는 경합 방지(팬 해제는 다음 입력부터).
-    let changed = *last_sel != sel.id;
+    let changed = *last_sel != sel.id || *last_epoch != sel.epoch;
     if changed {
         *last_sel = sel.id.clone();
+        *last_epoch = sel.epoch;
         follow.active = sel.id.is_some();
     }
     if !follow.active {
         return;
     }
-    // 수동 팬 해제 — 키보드·드래그 시작·터치 시작
-    let pan_key = keys.any_pressed([
-        KeyCode::KeyW,
-        KeyCode::KeyA,
-        KeyCode::KeyS,
-        KeyCode::KeyD,
-        KeyCode::ArrowUp,
-        KeyCode::ArrowDown,
-        KeyCode::ArrowLeft,
-        KeyCode::ArrowRight,
-    ]);
+    // 수동 팬 해제 — 키보드·드래그 시작·터치 시작.
+    // 채팅 입력 타이핑(winit keydown=window 스코프)은 해제 아님
+    let pan_key = !super::pick::ui_typing()
+        && keys.any_pressed([
+            KeyCode::KeyW,
+            KeyCode::KeyA,
+            KeyCode::KeyS,
+            KeyCode::KeyD,
+            KeyCode::ArrowUp,
+            KeyCode::ArrowDown,
+            KeyCode::ArrowLeft,
+            KeyCode::ArrowRight,
+        ]);
     if !changed
         && (pan_key
             || mouse.just_pressed(MouseButton::Left)

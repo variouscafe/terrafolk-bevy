@@ -174,11 +174,9 @@
 
   function snapshot(st) {
     const agents = [];
-    const positions = {};
     st.agents.forEach(function (a, id) {
       names[id] = a.name;
       agentsInfo[id] = { name: a.name, actType: a.actType, status: a.status };
-      positions[id] = { x: a.x, y: a.y };
       agents.push({
         id: id, name: a.name, kind: a.kind,
         x: a.x, y: a.y, facing: a.facing,
@@ -226,7 +224,6 @@
         }),
         inventions: inventions,
       });
-      window.TF_UI.feed.positions(positions);
     }
   }
 

@@ -113,11 +113,13 @@ pub fn camera_control(
     }
     // 모바일 두 손가락 핀치 비(begin_frame에서 전이 판정 완료)
     rig.zoom_goal *= pinch_zoom;
-    // 키보드 +/- — 뷰 중심 줌(앵커 없음)
-    if keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadAdd) {
+    // 키보드 +/- — 뷰 중심 줌(앵커 없음). 채팅 입력 타이핑 중에는 무시
+    // (winit keydown은 window 스코프 — DOM 입력 키도 여기 온다)
+    let typing = super::pick::ui_typing();
+    if !typing && (keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadAdd)) {
         rig.zoom_goal *= 1.0 - KEY_ZOOM_RATE * dt;
     }
-    if keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadSubtract) {
+    if !typing && (keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadSubtract)) {
         rig.zoom_goal *= 1.0 + KEY_ZOOM_RATE * dt;
     }
 
@@ -136,18 +138,18 @@ pub fn camera_control(
     let frame = input.apply_pans(camera, &gt_next, &world, &mouse, &touches, cursor, dt);
     rig.target += frame.pan;
 
-    // ── 6) 키보드 팬(WASD·화살표) — 줌 배율 반영 속도
+    // ── 6) 키보드 팬(WASD·화살표) — 줌 배율 반영 속도. 타이핑 중 무시(위 참조)
     let mut dir = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+    if !typing && (keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp)) {
         dir.y -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+    if !typing && (keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown)) {
         dir.y += 1.0;
     }
-    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+    if !typing && (keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft)) {
         dir.x -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+    if !typing && (keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight)) {
         dir.x += 1.0;
     }
     if dir != Vec2::ZERO {

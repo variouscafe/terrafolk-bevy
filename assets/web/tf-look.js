@@ -229,7 +229,11 @@
   }
   function drawRecolored(ctx, img, recolor, scratch) {
     var w = img.width, h = img.height;
-    var key = recolor.map(function (r) { return r.src[0] + '>' + r.dst[0] + '.' + r.src.length; }).join('|');
+    // 캐시 키는 전체 램프를 다 묶는다 — 첫 hex+길이만 쓰면 같은 값으로 시작하는
+    // 서로 다른 팔레트 쌍이 충돌해 이전 색상표로 오리컬러된다
+    var key = recolor.map(function (r) {
+      return r.src.join('>') + '=>' + r.dst.join('>');
+    }).join('|');
     var pairs = pairCache.get(key);
     if (!pairs) {
       pairs = colorPairs(recolor);

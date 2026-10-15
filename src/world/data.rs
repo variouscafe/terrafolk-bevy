@@ -37,6 +37,12 @@ pub enum PropKind {
     Stash,
     Relic,
     WoodLog,
+    // 동물(라이브 전용 — resources kind='animal', Poly by Google CC-BY)
+    AnimalBoar,
+    AnimalDeer,
+    AnimalWaterDeer,
+    AnimalSquirrel,
+    AnimalPheasant,
 }
 
 /// xorshift64* — 외부 rand 크래이트 없는 결정론 PRNG(wasm 무의존).

@@ -9,10 +9,75 @@
   let room = null;
   let retryTimer = null;
   let lastMap = null; // mapJson은 fullStateOnly — 최초 1회만 오므로 캐시
+  const names = {}; // agent id → 표시명(채팅 스피커)
+
+  // ── HUD — 관전 채팅·이벤트 오버레이 + 접속 상태 배지
+  let hud = null;
+  let badge = null;
+  let lastEvAt = 0;
+
+  function ensureHud() {
+    if (hud) return;
+    // 스타일은 <style>로 — 미디어쿼리·safe-area(노치/홈인디케이터) 대응
+    const st = document.createElement('style');
+    st.textContent =
+      '#tf-hud{position:fixed;z-index:50;pointer-events:none;display:flex;' +
+      'flex-direction:column;gap:3px;color:#fff;' +
+      'left:calc(12px + env(safe-area-inset-left,0px));' +
+      'bottom:calc(14px + env(safe-area-inset-bottom,0px));' +
+      'max-width:min(46ch,72vw);font:12px/1.45 ui-sans-serif,system-ui,sans-serif;}' +
+      '#tf-hud .tf-badge{align-self:flex-start;padding:2px 9px;border-radius:999px;' +
+      'margin-bottom:4px;background:rgba(20,24,32,.62);font-weight:600;' +
+      'letter-spacing:.02em;box-shadow:0 1px 6px rgba(0,0,0,.35);transition:background .4s;}' +
+      '@media (max-width:600px){#tf-hud{font-size:13.5px;max-width:84vw;}}';
+    document.head.appendChild(st);
+    hud = document.createElement('div');
+    hud.id = 'tf-hud';
+    document.body.appendChild(hud);
+    badge = document.createElement('div');
+    badge.className = 'tf-badge';
+    hud.appendChild(badge);
+    setStatus(false);
+  }
+
+  function setStatus(live) {
+    ensureHud();
+    badge.textContent = live ? '● LIVE · terrafolk' : '○ DEMO — 서버 재접속';
+    badge.style.background = live ? 'rgba(22,101,52,.78)' : 'rgba(120,72,20,.72)';
+  }
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  function hudLine(html, cls) {
+    ensureHud();
+    if (cls === 'ev') {
+      // 이벤트 홍수 제한 — 1.5s당 1줄(최신 것만)
+      const now = Date.now();
+      if (now - lastEvAt < 1500) return;
+      lastEvAt = now;
+    }
+    const el = document.createElement('div');
+    el.style.cssText =
+      'text-shadow:0 1px 3px rgba(0,0,0,.85);opacity:0;transition:opacity .5s;';
+    if (cls === 'ev') el.style.color = 'rgba(255,244,214,.92)';
+    el.innerHTML = html;
+    hud.appendChild(el);
+    requestAnimationFrame(function () { el.style.opacity = '1'; });
+    while (hud.children.length > 7) hud.removeChild(hud.children[1]);
+    setTimeout(function () {
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 600);
+    }, cls === 'chat' ? 15000 : 9000);
+  }
 
   function snapshot(st) {
     const agents = [];
     st.agents.forEach(function (a, id) {
+      names[id] = a.name;
       agents.push({
         id: id, name: a.name, kind: a.kind,
         x: a.x, y: a.y, facing: a.facing,
@@ -65,14 +130,26 @@
       client.auth.token = ticket;
       room = await client.joinOrCreate('world');
       console.info('[worldsim] 룸 접속 완료');
+      setStatus(true);
 
       room.onStateChange(function (st) {
         try {
           if (sink) sink(snapshot(st));
         } catch (e) { console.error('[worldsim] sink 오류', e); }
       });
+      // 채팅 — 발화 원문 우선(§17.55), 없으면 영문 정본
+      room.onMessage('chat', function (m) {
+        const nm = names[m.agent_id] || m.speaker || '?';
+        hudLine('<b>' + esc(nm) + '</b> · ' + esc(m.text || m.text_en || ''), 'chat');
+      });
+      // 이벤트 — 영문 렌더 정본 표시(관전 정보창)
+      room.onMessage('event', function (e) {
+        const tx = e && e.payload && e.payload.text;
+        if (tx) hudLine(esc(tx), 'ev');
+      });
       room.onLeave(function () {
         console.warn('[worldsim] 퇴장 — 5초 후 재접속');
+        setStatus(false);
         retryTimer = setTimeout(function () { connect(apiBase, wsBase); }, 5000);
       });
       room.onError(function (code, msg) {
@@ -80,6 +157,7 @@
       });
     } catch (e) {
       console.warn('[worldsim] 접속 실패(5초 후 재시도):', String(e));
+      setStatus(false);
       retryTimer = setTimeout(function () { connect(apiBase, wsBase); }, 5000);
     }
   }

@@ -119,6 +119,32 @@ impl PropKind {
                 target_h: 0.9,
                 variants: &[],
             },
+            // 동물 — Poly by Google CC-BY(stylized flat) · Kenta Imai(niwatori)
+            PropKind::AnimalBoar => ModelSpec {
+                path: "models/AnimalBoar.glb",
+                target_h: 0.85,
+                variants: &[],
+            },
+            PropKind::AnimalDeer => ModelSpec {
+                path: "models/AnimalDeer.glb",
+                target_h: 1.7,
+                variants: &[],
+            },
+            PropKind::AnimalWaterDeer => ModelSpec {
+                path: "models/AnimalWaterDeer.glb",
+                target_h: 0.85,
+                variants: &[],
+            },
+            PropKind::AnimalSquirrel => ModelSpec {
+                path: "models/AnimalSquirrel.glb",
+                target_h: 0.38,
+                variants: &[],
+            },
+            PropKind::AnimalPheasant => ModelSpec {
+                path: "models/AnimalPheasant.glb",
+                target_h: 0.55,
+                variants: &[],
+            },
         }
     }
 }

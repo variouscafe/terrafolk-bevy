@@ -73,11 +73,8 @@ pub struct LiveFrame {
     pub minute: u16,
     #[allow(dead_code)]
     pub season: String,
-    #[allow(dead_code)]
     pub weather: Option<String>,
-    #[allow(dead_code)]
     pub sunrise: Option<u16>,
-    #[allow(dead_code)]
     pub sunset: Option<u16>,
     /// Tiled JSON — 최초 1회(fullStateOnly)
     #[serde(default)]
@@ -115,6 +112,7 @@ impl Plugin for NetPlugin {
                     apply::sync_resources,
                     apply::sync_agents,
                     apply::live_move,
+                    apply::debug_goto_animal,
                 ),
             );
     }

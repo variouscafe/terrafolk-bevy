@@ -66,17 +66,74 @@ pub fn prime_live_world(
     net.frame = Some(LiveFrame { map: None, ..frame.clone() });
 }
 
-/// 서버 시간 → DayTime(로컬 진행 정지 — 서버가 정본).
-pub fn sync_daynight(net: Res<NetState>, mut day: ResMut<crate::world::daynight::DayTime>) {
+/// 서버 시간 → DayTime(로컬 진행 정지 — 서버가 정본) + 일출/일몰·날씨.
+pub fn sync_daynight(
+    net: Res<NetState>,
+    mut day: ResMut<crate::world::daynight::DayTime>,
+    mut weather: ResMut<crate::world::precip::WeatherState>,
+) {
     if net.status != NetStatus::Connected {
         return;
     }
     let Some(f) = net.frame.as_ref() else { return };
     day.hour = f.hour as f32 + f.minute as f32 / 60.0;
     day.time_scale = 0.0;
+    if let Some(sr) = f.sunrise {
+        day.sunrise_min = sr as f32;
+    }
+    if let Some(ss) = f.sunset {
+        day.sunset_min = ss as f32;
+    }
+    if let Some(w) = f.weather.as_deref() {
+        weather.kind = w.to_string();
+    }
 }
 
-/// 서버 kind → 소품 종(미지원 동물은 2b).
+/// 자원 stateJson 최소 파싱 — 동물 {alive}·건축 {stage}.
+#[derive(Default, serde::Deserialize)]
+struct ResState {
+    #[serde(default)]
+    alive: Option<bool>,
+    #[serde(default)]
+    stage: Option<String>,
+}
+
+/// 서버 kind → (소품 종, 목표 높이). None = 비표시.
+/// 동물은 사냥 사망(alive=false) 시 소멸, 오두막은 건축 단계별 가시화.
+fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind, f32)> {
+    match kind {
+        "animal" => {
+            if state.alive == Some(false) {
+                return None;
+            }
+            let k = match species {
+                "boar" => PropKind::AnimalBoar,
+                "deer" => PropKind::AnimalDeer,
+                "water_deer" => PropKind::AnimalWaterDeer,
+                "squirrel" => PropKind::AnimalSquirrel,
+                _ => PropKind::AnimalPheasant, // pheasant·기타 조류
+            };
+            Some((k, crate::world::models::prop_model(k).0))
+        }
+        "hut" => {
+            // 단계별 시각화 — 부지/기초=재료, 골조·벽=성장 스케일, 완공=전체
+            let stage = state.stage.as_deref().unwrap_or("COMPLETED");
+            Some(match stage {
+                "SITE_PREPARED" | "FOUNDATION_READY" => (PropKind::WoodLog, 0.9),
+                "FRAME_READY" => (PropKind::Hut, 3.4 * 0.5),
+                "ENCLOSURE_READY" => (PropKind::Hut, 3.4 * 0.75),
+                _ => (PropKind::Hut, 3.4),
+            })
+        }
+        _ => {
+            let k = live_prop(kind, species)?;
+            let (h, _) = crate::world::models::prop_model(k);
+            Some((k, h))
+        }
+    }
+}
+
+/// 서버 kind → 소품 종(정적 자원).
 fn live_prop(kind: &str, species: &str) -> Option<PropKind> {
     match kind {
         "tree" => Some(if species.contains("pine") {
@@ -87,7 +144,6 @@ fn live_prop(kind: &str, species: &str) -> Option<PropKind> {
         "plant" => Some(PropKind::BerryBush),
         "gold_vein" => Some(PropKind::GoldVein),
         "campfire" => Some(PropKind::Campfire),
-        "hut" => Some(PropKind::Hut),
         "stash" => Some(PropKind::Stash),
         "grave" => Some(PropKind::Grave),
         "relic" => Some(PropKind::Relic),
@@ -95,33 +151,105 @@ fn live_prop(kind: &str, species: &str) -> Option<PropKind> {
     }
 }
 
-/// 자원 동기화 — 신규 스폰 / 사라진 것 제거(자원은 배치 고정 — 좌표 이동 없음).
+/// 자원 상태 서명 — 변화(사망·건축 단계 진행) 감지용.
+fn res_sig(r: &super::LiveResource, vis: bool) -> u64 {
+    let mut h = 1469598103934665603u64;
+    for b in r.kind.bytes().chain(r.species.bytes()).chain(
+        r.state
+            .as_deref()
+            .unwrap_or("")
+            .bytes()
+            .chain(std::iter::once(if vis { 1 } else { 0 })),
+    ) {
+        h ^= b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    h
+}
+
+/// 자원 상태 서명 컴포넌트 — 변화 시 재스폰 트리거.
+#[derive(Component)]
+pub struct LiveResMeta(pub u64);
+
+/// 자원 동기화 — 신규 스폰 / 사라진 것·상태 변화(사망·건축 단계) 재스폰.
 pub fn sync_resources(
     mut commands: Commands,
     net: Res<NetState>,
     world: Res<WorldData>,
     assets: Res<AssetServer>,
-    q_live: Query<(Entity, &LiveResourceTag)>,
+    mut q_live: Query<(
+        Entity,
+        &LiveResourceTag,
+        Option<&LiveResMeta>,
+        Option<&crate::world::models::PropRoot>,
+    )>,
+    mut first_log: Local<u32>,
 ) {
     if net.status != NetStatus::Connected {
         return;
     }
     let Some(frame) = net.frame.as_ref() else { return };
-    let mut seen: Vec<u32> = Vec::new();
 
-    for r in &frame.resources {
-        let Some(kind) = live_prop(&r.kind, &r.species) else {
+    // 갱신·제거 — 서명이 바뀌면 despawn(다음 프레임 새 시각으로 재스폰)
+    for (e, tag, meta, _) in &mut q_live {
+        let Some(r) = frame.resources.iter().find(|r| r.id == tag.0) else {
+            commands.entity(e).despawn();
             continue;
         };
-        seen.push(r.id);
-        if q_live.iter().any(|(_, t)| t.0 == r.id) {
-            continue; // 이미 스폰됨
+        let st: ResState = r
+            .state
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let vis = live_visual(&r.kind, &r.species, &st).is_some();
+        let sig = res_sig(r, vis);
+        match meta {
+            Some(m) if m.0 == sig => {}
+            _ => commands.entity(e).despawn(),
         }
+    }
+
+    // 신규 스폰
+    *first_log += 1;
+    if *first_log == 2 {
+        let mut total = 0;
+        let mut animals = 0;
+        for (_, _, _, prop) in &q_live {
+            total += 1;
+            if let Some(p) = prop {
+                if matches!(
+                    p.kind,
+                    PropKind::AnimalBoar
+                        | PropKind::AnimalDeer
+                        | PropKind::AnimalWaterDeer
+                        | PropKind::AnimalSquirrel
+                        | PropKind::AnimalPheasant
+                ) {
+                    animals += 1;
+                }
+            }
+        }
+        info!("[net] 라이브 자원 실체 {total}개 (동물 {animals})");
+    }
+    for r in &frame.resources {
+        if q_live.iter().any(|(_, t, _, _)| t.0 == r.id) {
+            continue;
+        }
+        let st: ResState = r
+            .state
+            .as_deref()
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        let Some((kind, target_h)) = live_visual(&r.kind, &r.species, &st) else {
+            continue;
+        };
+        let vis = true;
+        let sig = res_sig(r, vis);
         if world.terrain_at(r.x as i32, r.y as i32) == "water" {
             continue;
         }
         let ground = world.height_at(r.x as i32, r.y as i32);
-        let (target_h, variants) = crate::world::models::prop_model(kind);
+        let variants = crate::world::models::prop_model(kind).1;
         commands.spawn((
             crate::world::models::PropRoot {
                 kind,
@@ -133,13 +261,9 @@ pub fn sync_resources(
             },
             bevy::world_serialization::WorldAssetRoot(crate::world::models::prop_scene(kind, &assets)),
             LiveResourceTag(r.id),
+            LiveResMeta(sig),
             Transform::from_translation(Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5)),
         ));
-    }
-    for (e, t) in &q_live {
-        if !seen.contains(&t.0) {
-            commands.entity(e).despawn();
-        }
     }
 }
 
@@ -223,6 +347,32 @@ pub fn live_move(
             // 이동 방향 회전(발밑 스케일 보존)
             let yaw = d.x.atan2(d.z);
             tr.rotation = Quat::from_rotation_y(yaw);
+        }
+    }
+}
+
+/// 검증 디버그 — G키: 카메라를 첫 라이브 동물로 점프.
+pub fn debug_goto_animal(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut rig: ResMut<crate::world::camera_rig::CameraRig>,
+    q: Query<(&Transform, &crate::world::models::PropRoot), With<LiveResourceTag>>,
+) {
+    if !keys.just_pressed(KeyCode::KeyG) {
+        return;
+    }
+    for (tr, prop) in &q {
+        if matches!(
+            prop.kind,
+            PropKind::AnimalBoar
+                | PropKind::AnimalDeer
+                | PropKind::AnimalWaterDeer
+                | PropKind::AnimalSquirrel
+                | PropKind::AnimalPheasant
+        ) {
+            rig.target = Vec2::new(tr.translation.x, tr.translation.z);
+            rig.zoom_goal = 0.8;
+            info!("[net] G키 — 라이브 동물 위치로 점프");
+            break;
         }
     }
 }

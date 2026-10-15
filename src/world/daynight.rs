@@ -8,11 +8,20 @@ pub struct DayTime {
     pub hour: f32,
     pub time_scale: f32,
     pub night_factor: f32,
+    /// 오늘 일출/일몰(분) — 서버 계절별 값, 데모는 6:00/18:00 고정
+    pub sunrise_min: f32,
+    pub sunset_min: f32,
 }
 
 impl Default for DayTime {
     fn default() -> Self {
-        DayTime { hour: 9.0, time_scale: 1.0, night_factor: 0.0 }
+        DayTime {
+            hour: 9.0,
+            time_scale: 1.0,
+            night_factor: 0.0,
+            sunrise_min: 360.0,
+            sunset_min: 1080.0,
+        }
     }
 }
 
@@ -43,13 +52,16 @@ pub fn advance_time(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut day: R
 
 pub fn apply_sky(
     mut day: ResMut<DayTime>,
+    weather: Res<super::precip::WeatherState>,
     mut sun_q: Query<&mut Transform, With<Sun>>,
     mut light_q: Query<&mut DirectionalLight>,
     mut ambient: ResMut<GlobalAmbientLight>,
     mut clear: ResMut<ClearColor>,
 ) {
     let h = day.hour;
-    let day_t = ((h - 6.0) / 12.0).clamp(-0.2, 1.2);
+    // 일출~일몰 정규화(서버 계절 반영 — 겨울 짧은 낮)
+    let day_len = (day.sunset_min - day.sunrise_min).max(60.0);
+    let day_t = ((h * 60.0 - day.sunrise_min) / day_len).clamp(-0.2, 1.2);
     let elev = (day_t.clamp(0.0, 1.0) * std::f32::consts::PI).sin() * 68.0;
     let azimuth = -110.0 + (day_t.clamp(0.0, 1.0) * 220.0);
     let night = if day_t <= 0.0 || day_t >= 1.0 {
@@ -73,18 +85,26 @@ pub fn apply_sky(
     const NOON: [f32; 3] = [1.0, 0.95, 0.88];
     const DUSK: [f32; 3] = [1.0, 0.58, 0.34];
     const MOON: [f32; 3] = [0.52, 0.62, 0.85];
+    // ── 날씨 — 조도 감쇠·탈포화 계수(§17.39 clear|overcast|rain|storm|snow|fog)
+    let (dim, gray, cool) = weather.sky_mix();
     if let Ok(mut light) = light_q.single_mut() {
         let c = lerp3(lerp3(NOON, DUSK, dusk_w), MOON, night);
         light.color = Color::srgb(c[0], c[1], c[2]);
-        light.illuminance = 26000.0 * (1.0 - night * 0.9);
+        light.illuminance = 26000.0 * (1.0 - night * 0.9) * dim;
     }
 
     const SKY_DAY: [f32; 3] = [0.48, 0.71, 0.92];
     const SKY_DUSK: [f32; 3] = [0.62, 0.44, 0.38];
     const SKY_NIGHT: [f32; 3] = [0.04, 0.055, 0.12];
-    let sky = lerp3(lerp3(SKY_DAY, SKY_DUSK, dusk_w), SKY_NIGHT, night);
+    let mut sky = lerp3(lerp3(SKY_DAY, SKY_DUSK, dusk_w), SKY_NIGHT, night);
+
+    // ── 날씨 — 조도 감쇠·하늘 탈포화(§17.39 clear|overcast|rain|storm|snow|fog)
+    let luma = sky[0] * 0.3 + sky[1] * 0.6 + sky[2] * 0.1;
+    sky = lerp3(sky, [luma, luma, luma], gray);
+    sky = lerp3(sky, [0.74, 0.79, 0.9], cool);
+
     clear.0 = Color::srgb(sky[0], sky[1], sky[2]);
-    ambient.brightness = 55.0 + (1.0 - night) * 150.0;
+    ambient.brightness = (55.0 + (1.0 - night) * 150.0) * (0.55 + 0.45 * dim);
     ambient.color = Color::srgb(
         lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[0],
         lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[1],

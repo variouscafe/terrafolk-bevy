@@ -35,7 +35,7 @@ trunk serve                  # 웹(:8080, 핫리로드)
 
 - GitHub Pages: `deploy-github-page` 워크플로(수동 디스패치) → trunk 릴리스 빌드 →
   wasm-opt → gh-pages 브랜치. Pages 설정이 gh-pages 소스를 가리키면
-  `https://<user>.github.io/terrafolk-bevy/` 에서 서비스된다.
+  `https://<user>.github.io/terrafolk-rust/` 에서 서비스된다.
 - 태그(`v0.1.0`) 푸시 → 전 플랫폼 릴리스(모바일은 dev 빌드).
 
 ## 로드맵

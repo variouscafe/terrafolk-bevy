@@ -190,12 +190,13 @@ impl PointerInput {
             && let Some(px) = cursor
         {
             match self.mouse_grab {
+                // 그랩 점은 제스처 내내 불변 — "잡은 세계점이 커서 아래" 제약이
+                // 매 프레임 d=grab−ground(px,현재) 로 정확 복원된다(갱신 불필요).
                 Some(grab) => {
                     if let Some(g) = ground_at(camera, gt, px, grab.y) {
                         let d = xz(grab) - xz(g);
                         pan += d;
                         drag_delta = Some(d);
-                        self.mouse_grab = Some(g);
                     }
                 }
                 None => self.mouse_grab = ground_refined(camera, gt, px, world),
@@ -208,11 +209,11 @@ impl PointerInput {
             let (id, px) = (list[0].id(), list[0].position());
             match self.touch_grab {
                 Some((gid, grab)) if gid == id => {
+                    // 그랩 점 불변 (마우스와 동일 원리)
                     if let Some(g) = ground_at(camera, gt, px, grab.y) {
                         let d = xz(grab) - xz(g);
                         pan += d;
                         drag_delta = Some(d);
-                        self.touch_grab = Some((id, g));
                     }
                 }
                 _ => self.touch_grab = ground_refined(camera, gt, px, world).map(|g| (id, g)),
@@ -225,11 +226,11 @@ impl PointerInput {
             if let Some(ref mut p) = self.pinch {
                 match p.centroid_grab {
                     Some(grab) => {
+                        // 중심 그랩 점 불변 — 줌(비 변화)과 동시에도 중심 아래 세계점 유지
                         if let Some(g) = ground_at(camera, gt, c, grab.y) {
                             let d = xz(grab) - xz(g);
                             pan += d;
                             drag_delta = Some(d);
-                            p.centroid_grab = Some(g);
                         }
                     }
                     None => p.centroid_grab = ground_refined(camera, gt, c, world),

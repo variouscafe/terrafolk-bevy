@@ -7,8 +7,8 @@
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> deep: vec4<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> shallow: vec4<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> scroll_speed: f32;
-@group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> wave_scale: f32;
+@group(#{MATERIAL_BIND_GROUP}) @binding(2) var<uniform> scroll_speed: vec4<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> wave_scale: vec4<f32>;
 
 fn hash(p: vec2<f32>) -> f32 {
     let q = fract(p * vec2<f32>(127.1, 311.7));
@@ -30,8 +30,8 @@ fn vnoise(p: vec2<f32>) -> f32 {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let t = globals.time;
-    let uv1 = in.uv * wave_scale + vec2<f32>(t * scroll_speed, t * scroll_speed * 0.7);
-    let uv2 = in.uv * wave_scale * 1.9 - vec2<f32>(t * scroll_speed * 1.3, t * scroll_speed * 0.5);
+    let uv1 = in.uv * wave_scale.x + vec2<f32>(t * scroll_speed.x, t * scroll_speed.x * 0.7);
+    let uv2 = in.uv * wave_scale.x * 1.9 - vec2<f32>(t * scroll_speed.x * 1.3, t * scroll_speed.x * 0.5);
     let n = vnoise(uv1) * 0.6 + vnoise(uv2) * 0.4;
 
     let view_dir = normalize(view.world_position - in.world_position.xyz);

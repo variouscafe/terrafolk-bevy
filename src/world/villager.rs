@@ -68,6 +68,7 @@ pub fn spawn_villagers(
     assets: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut pixel: ResMut<super::PixelTextures>,
 ) {
     let rows = ["S", "SE", "E", "N"];
     let mut textures: Vec<Vec<Handle<Image>>> = Vec::new();
@@ -78,6 +79,8 @@ pub fn spawn_villagers(
         }
         textures.push(frames);
     }
+    // 픽셀 스프라이트 → nearest 샘플링 등록
+    pixel.0 = textures.iter().flat_map(|r| r.iter().cloned()).collect();
 
     let mut rng = super::data::Rng::new(99);
     let c = SIZE as i32 / 2;
@@ -90,8 +93,8 @@ pub fn spawn_villagers(
         if !world.walkable(x, y) {
             continue;
         }
-        let pos = Vec3::new(x as f32 + 0.5, world.height_at(x, y) + 0.7, y as f32 + 0.5);
-        let mesh = Mesh::from(bevy::math::primitives::Rectangle::new(32.0 * 0.028, 48.0 * 0.028));
+        let pos = Vec3::new(x as f32 + 0.5, world.height_at(x, y) + 0.68, y as f32 + 0.5);
+        let mesh = Mesh::from(bevy::math::primitives::Rectangle::new(32.0 * PIXEL, 48.0 * PIXEL));
         commands
             .spawn((
                 Mesh3d(meshes.add(mesh)),
@@ -117,10 +120,9 @@ pub fn spawn_villagers(
                     frame_timer: 0.0,
                 },
             ))
-            .id();
+            ;
         placed += 1;
     }
-    let _ = PIXEL;
 }
 
 pub fn wander(time: Res<Time>, world: Res<WorldData>, mut q: Query<(&mut Villager, &mut Transform)>) {

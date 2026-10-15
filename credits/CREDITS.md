@@ -1,5 +1,7 @@
 # Credits
 
-## Assets
+## Models
+See MODELS.md — Quaternius / KayKit (CC0), via poly.pizza.
 
-* Bevy icon: [MIT License](licenses/Bevy_MIT_License.md);
+## Engine
+Bevy 0.19.1 — MIT/Apache-2.0

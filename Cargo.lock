@@ -5416,6 +5416,7 @@ dependencies = [
  "embed-resource",
  "image",
  "log",
+ "web-sys",
  "winit",
 ]
 

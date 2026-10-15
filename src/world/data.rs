@@ -20,35 +20,23 @@ pub struct PropSpec {
 pub enum PropKind {
     TreeBroadleaf,
     TreePine,
+    TreePalm,
     TreeSapling,
+    TreeDead,
     BerryBush,
     Boulder,
     GoldVein,
+    FlowerClump,
+    GrassClump,
+    Hut,
+    StorageHut,
+    Tent,
+    Campfire,
     Windbreak,
     Grave,
     Stash,
     Relic,
-    Hut,
-    Campfire,
-}
-
-impl PropKind {
-    pub fn texture(self) -> &'static str {
-        match self {
-            PropKind::TreeBroadleaf => "props/tree_broadleaf.png",
-            PropKind::TreePine => "props/tree_pine.png",
-            PropKind::TreeSapling => "props/tree_sapling.png",
-            PropKind::BerryBush => "props/berry_bush.png",
-            PropKind::Boulder => "props/boulder.png",
-            PropKind::GoldVein => "props/gold_vein.png",
-            PropKind::Windbreak => "props/windbreak.png",
-            PropKind::Grave => "props/grave.png",
-            PropKind::Stash => "props/stash.png",
-            PropKind::Relic => "props/relic.png",
-            PropKind::Hut => "props/hut.png",
-            PropKind::Campfire => "props/campfire_0.png",
-        }
-    }
+    WoodLog,
 }
 
 /// xorshift64* — 외부 rand 크래이트 없는 결정론 PRNG(wasm 무의존).
@@ -185,38 +173,59 @@ impl WorldData {
             }
         }
 
-        // 소품 배치 — 결정론
+        // 소품 산포 — 결정론. 지형별 밀도(페인티드 군락 감각).
+        let probe = Self { terrain: terrain.clone(), height: height.clone(), props: vec![] };
         let mut rng = Rng::new(seed ^ 0x5EED);
         let mut props = Vec::new();
         for y in 2..SIZE - 2 {
             for x in 2..SIZE - 2 {
-                let t = Self { terrain: terrain.clone(), height: height.clone(), props: vec![] }.terrain_at(x as i32, y as i32);
+                let t = probe.terrain_at(x as i32, y as i32);
                 let r = rng.f32();
                 let p = |kind, x, y| PropSpec { kind, x, y };
-                if t == "forest" && r < 0.30 {
+                if t == "forest" && r < 0.34 {
                     let kind = if rng.f32() < 0.55 { PropKind::TreePine } else { PropKind::TreeBroadleaf };
                     props.push(p(kind, x, y));
-                } else if t == "grass" && r < 0.045 {
+                } else if t == "forest" && r < 0.37 {
+                    props.push(p(PropKind::TreeSapling, x, y));
+                } else if t == "grass" && r < 0.05 {
                     props.push(p(PropKind::TreeBroadleaf, x, y));
-                } else if t == "grass" && r < 0.06 {
+                } else if t == "grass" && r < 0.062 {
                     props.push(p(PropKind::BerryBush, x, y));
+                } else if t == "grass" && r < 0.115 {
+                    props.push(p(PropKind::GrassClump, x, y));
+                } else if t == "grass" && r < 0.132 {
+                    props.push(p(PropKind::FlowerClump, x, y));
                 } else if t == "rock" && r < 0.10 {
                     props.push(p(PropKind::Boulder, x, y));
                 } else if t == "rock" && r < 0.13 {
                     props.push(p(PropKind::GoldVein, x, y));
+                } else if t == "rock" && r < 0.15 {
+                    props.push(p(PropKind::TreeDead, x, y));
+                } else if t == "dirt" && r < 0.02 {
+                    props.push(p(PropKind::TreeDead, x, y));
+                } else if t == "sand" && r < 0.018 {
+                    props.push(p(PropKind::TreePalm, x, y));
+                } else if t == "sand" && r < 0.028 {
+                    props.push(p(PropKind::GrassClump, x, y));
                 }
             }
         }
-        // 중앙 촌락 씬 — 오두막·모닥불·짐·묘비·유물·바람막이(히어로 구도)
+        // 중앙 촌락 씬 — 오두막·모닥불·짐·묘비·유물·울타리·텐트(히어로 구도)
         let cc = c as usize;
         for (kind, ox, oy) in [
             (PropKind::Hut, cc - 3, cc - 2),
-            (PropKind::Hut, cc + 2, cc + 1),
+            (PropKind::StorageHut, cc + 2, cc + 1),
+            (PropKind::Tent, cc - 6, cc - 1),
             (PropKind::Windbreak, cc - 5, cc + 2),
+            (PropKind::Windbreak, cc - 4, cc + 2),
+            (PropKind::Windbreak, cc - 3, cc + 2),
             (PropKind::Campfire, cc, cc),
             (PropKind::Stash, cc + 1, cc - 1),
+            (PropKind::WoodLog, cc - 1, cc + 1),
             (PropKind::Grave, cc + 4, cc - 3),
-            (PropKind::Relic, cc - 1, cc + 3),
+            (PropKind::Relic, cc - 1, cc + 4),
+            (PropKind::FlowerClump, cc - 2, cc + 1),
+            (PropKind::FlowerClump, cc + 2, cc - 2),
         ] {
             props.push(PropSpec { kind, x: ox, y: oy });
         }

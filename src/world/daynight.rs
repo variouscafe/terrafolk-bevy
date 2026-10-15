@@ -47,7 +47,6 @@ pub fn apply_sky(
     mut light_q: Query<&mut DirectionalLight>,
     mut ambient: ResMut<GlobalAmbientLight>,
     mut clear: ResMut<ClearColor>,
-    mut fog_q: Query<&mut bevy::pbr::DistanceFog>,
 ) {
     let h = day.hour;
     let day_t = ((h - 6.0) / 12.0).clamp(-0.2, 1.2);
@@ -85,14 +84,6 @@ pub fn apply_sky(
     const SKY_NIGHT: [f32; 3] = [0.04, 0.055, 0.12];
     let sky = lerp3(lerp3(SKY_DAY, SKY_DUSK, dusk_w), SKY_NIGHT, night);
     clear.0 = Color::srgb(sky[0], sky[1], sky[2]);
-    // 포그 — 하늘보다 약간 밝게(수평선 안개 톤)
-    if let Ok(mut fog) = fog_q.single_mut() {
-        fog.color = Color::srgb(
-            (sky[0] * 1.12 + 0.02).min(1.0),
-            (sky[1] * 1.10 + 0.02).min(1.0),
-            (sky[2] * 1.08 + 0.02).min(1.0),
-        );
-    }
     ambient.brightness = 55.0 + (1.0 - night) * 150.0;
     ambient.color = Color::srgb(
         lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[0],

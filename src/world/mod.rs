@@ -10,6 +10,7 @@ pub mod splat;
 pub mod terrain;
 pub mod villager;
 pub mod water;
+pub mod wind;
 
 use bevy::image::ImageSampler;
 use bevy::pbr::MaterialPlugin;
@@ -22,6 +23,7 @@ impl Plugin for WorldPlugin {
         app.add_plugins(bevy::pbr::MaterialPlugin::<water::WaterMaterial>::default());
         app.init_asset::<water::WaterMaterial>();
         app.add_plugins(MaterialPlugin::<splat::TerrainMaterial>::default());
+        app.add_plugins(MaterialPlugin::<wind::WindMaterial>::default());
         app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
@@ -46,6 +48,7 @@ impl Plugin for WorldPlugin {
                     daynight::apply_sky,
                     models::fit_props,
                     models::apply_fit,
+                    wind::apply_wind,
                     models::flicker_campfires,
                     villager::wander,
                     villager::animate,

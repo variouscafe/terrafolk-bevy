@@ -125,6 +125,7 @@ impl PropKind {
 
 #[derive(Component)]
 pub struct PropRoot {
+    pub kind: PropKind,
     pub target_h: f32,
     pub ground_y: f32,
     pub rot_y: f32,
@@ -165,6 +166,7 @@ pub fn spawn_props(mut commands: Commands, world: Res<WorldData>, assets: Res<As
         commands.spawn((
             WorldAssetRoot(scene),
             PropRoot {
+                kind: p.kind,
                 target_h: spec.target_h,
                 ground_y: ground,
                 rot_y,

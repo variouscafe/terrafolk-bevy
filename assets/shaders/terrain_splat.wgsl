@@ -14,6 +14,7 @@
 #import bevy_pbr::{
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    mesh_view_bindings::view,
 }
 #endif
 
@@ -84,6 +85,12 @@ fn fragment(
     var out: FragmentOutput;
     out.color = apply_pbr_lighting(pbr_input);
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
+    // 수동 원근 안개 — 카메라 DistanceFog는 WebGL2 유니폼 한도로 불가.
+    // 공기 원근: 먼 픽셀을 하늘톤으로(밤엔 어둡게 — 노이즈 색을 이용한 근사)
+    let dist = distance(view.world_position, in.world_position.xyz);
+    let fog_f = smoothstep(48.0, 130.0, dist);
+    let fog_col = vec3<f32>(0.60, 0.72, 0.85);
+    out.color = vec4<f32>(mix(out.color.rgb, fog_col, fog_f * 0.75), out.color.a);
 #endif
 
     return out;

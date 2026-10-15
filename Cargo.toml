@@ -21,6 +21,7 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"   # wasm 언와인딩 제거 — 크기 절감(Cloudflare Pages 25MiB 제한 대응)
 
 [profile.dist]
 inherits = "release"
@@ -39,7 +40,6 @@ bevy = { version = "0.20.0", default-features = false, features = [
     "3d",
     "png",
     "bevy_asset",
-    "sysinfo_plugin",
 ] }
 
 # keep the following in sync with Bevy's dependencies (main.rs 창 아이콘)

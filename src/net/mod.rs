@@ -156,7 +156,7 @@ fn connect_bridge(queue: Res<FrameQueue>) {
 fn connect_bridge() {}
 
 /// 큐 → 최신 프레임 1개만 채택(중간 프레임 스킵 — 1s 주기라 충분).
-pub fn drain_frames(mut queue: Res<FrameQueue>, mut net: ResMut<NetState>) {
+pub fn drain_frames(queue: Res<FrameQueue>, mut net: ResMut<NetState>) {
     let drained: Vec<String> = {
         let Ok(mut q) = queue.inner.lock() else {
             return;

@@ -243,9 +243,7 @@ impl WorldData {
                     props.push(p(PropKind::Boulder, x, y));
                 } else if t == "rock" && r < 0.13 {
                     props.push(p(PropKind::GoldVein, x, y));
-                } else if t == "rock" && r < 0.15 {
-                    props.push(p(PropKind::TreeDead, x, y));
-                } else if t == "dirt" && r < 0.02 {
+                } else if (t == "rock" && r < 0.15) || (t == "dirt" && r < 0.02) {
                     props.push(p(PropKind::TreeDead, x, y));
                 } else if t == "sand" && r < 0.018 {
                     props.push(p(PropKind::TreePalm, x, y));

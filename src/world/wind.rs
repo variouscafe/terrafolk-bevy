@@ -48,6 +48,7 @@ pub struct WindApplied;
 
 /// 핏 완료 소품의 GLB 재질을 WindMaterial로 교체 — 출처 핸들+코드 캐시로
 /// 동일 (재질, 종) 조합은 하나의 변환 재질을 공유(오토 인스턴싱 배칭 유지).
+#[allow(clippy::type_complexity)] // Bevy 쿼리 타입 — 배타 컴포넌트 필터 조합
 pub fn apply_wind(
     mut commands: Commands,
     q_root: Query<

@@ -12,17 +12,12 @@ use super::villager::Villager;
 /// 초당 수렴 속도(지수 스무딩) — 카메라 리그 줌 스무딩과 비슷한 체감
 const FOLLOW_SMOOTH: f32 = 3.0;
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct CamFollow {
     pub active: bool,
 }
 
-impl Default for CamFollow {
-    fn default() -> Self {
-        CamFollow { active: false }
-    }
-}
-
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 입력·선택·카메라를 한 프레임 안에서 순서 보정
 pub fn follow_camera(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,

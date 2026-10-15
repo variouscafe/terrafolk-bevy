@@ -359,6 +359,7 @@ fn collect_meshes(entity: Entity, q: &FitQuery<'_, '_>, out: &mut Vec<(Entity, S
 /// 자동 핏(1단계) — 씬 자식이 생기면: 변형 선택 → AABB 측정 → 목표 계산.
 /// GLB 번들은 RootNode 아래 변형 메시들이 나란히 붙는 구조 — 서브트리 전체에서
 /// 이름 매칭 메시 1개만 남기고 타 메시는 재귀 파기(묶음 통째 렌더 방지).
+#[allow(clippy::type_complexity)] // Bevy 쿼리 타입 — 배타 컴포넌트 필터 조합
 pub fn fit_props(
     mut commands: Commands,
     q_root: Query<
@@ -396,10 +397,10 @@ pub fn fit_props(
         }
         // 측정 — 유지 메시들만(변형 미지정이면 전체 메시)
         let mut measure: Vec<Entity> = Vec::new();
-        if !prop.variants.is_empty() {
-            if let Some(k) = keep_mesh {
-                measure.push(k);
-            }
+        if !prop.variants.is_empty()
+            && let Some(k) = keep_mesh
+        {
+            measure.push(k);
         }
         if measure.is_empty() {
             let mut all = Vec::new();

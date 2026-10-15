@@ -157,10 +157,10 @@ fn build_terrain(
                 [corners[3].0 * UV_SCALE, corners[3].2 * UV_SCALE],
             ];
             let ws: [[f32; 5]; 4] = [
-                corner_weights(&world, corners[0].3, corners[0].4),
-                corner_weights(&world, corners[1].3, corners[1].4),
-                corner_weights(&world, corners[2].3, corners[2].4),
-                corner_weights(&world, corners[3].3, corners[3].4),
+                corner_weights(world, corners[0].3, corners[0].4),
+                corner_weights(world, corners[1].3, corners[1].4),
+                corner_weights(world, corners[2].3, corners[2].4),
+                corner_weights(world, corners[3].3, corners[3].4),
             ];
             push_quad(&mut m, quad, [0.0, 1.0, 0.0], uvs, ws);
 

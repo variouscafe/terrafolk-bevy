@@ -37,28 +37,18 @@ pub struct VillagerAnims {
 #[derive(Component)]
 pub struct VillagerModel(pub Handle<Gltf>);
 
-/// persona 틴트(가벼운 개별화 — 텍스처 위 곱셈)
-const TINTS: [Color; 6] = [
-    Color::srgb(1.0, 1.0, 1.0),
-    Color::srgb(1.0, 0.93, 0.88),
-    Color::srgb(0.9, 0.96, 1.0),
-    Color::srgb(1.0, 0.96, 0.9),
-    Color::srgb(0.95, 0.93, 1.0),
-    Color::srgb(0.97, 1.0, 0.93),
-];
-
 const MODELS: [&str; 2] = ["models/VillagerMan.glb", "models/VillagerWoman.glb"];
 
 /// 라이브 에이전트용 — lookJson.sex(있으면) 또는 id 해시로 남/여 선택.
 pub fn model_path_for(id: &str, look: Option<&str>) -> &'static str {
-    if let Some(look) = look {
-        if look.contains("\"sex\":\"") {
-            // lookJson은 {uuid,sex,age} — sex 값 문자로 판별(여성 F/f)
-            if let Some(i) = look.find("\"sex\":\"") {
-                let c = look[i + 7..].chars().next().unwrap_or('M');
-                if c == 'F' || c == 'f' {
-                    return MODELS[1];
-                }
+    if let Some(look) = look
+        && look.contains("\"sex\":\"")
+    {
+        // lookJson은 {uuid,sex,age} — sex 값 문자로 판별(여성 F/f)
+        if let Some(i) = look.find("\"sex\":\"") {
+            let c = look[i + 7..].chars().next().unwrap_or('M');
+            if c == 'F' || c == 'f' {
+                return MODELS[1];
             }
         }
     }
@@ -104,12 +94,13 @@ pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Re
 }
 
 /// 씬 스폰 완료 — 애니메이션 그래프 연결 + 오토펏 + 틴트.
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 준비 관찰자 인자
 pub fn villager_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     q_self: Query<(&Villager, &VillagerModel)>,
     children: Query<&Children>,
-    mut players: Query<(Entity, &mut AnimationPlayer)>,
+    players: Query<(Entity, &mut AnimationPlayer)>,
     q_walk: super::models::FitQuery,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,

@@ -15,6 +15,7 @@ pub struct LiveResourceTag(pub u32);
 pub struct LiveAgentTag(pub String);
 
 /// 라이브 전환 — 데모 지형·물·소품·주민 제거 후 라이브 지형 스폰(1회).
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 데모 철거+라이브 지형 스폰 자원들
 pub fn prime_live_world(
     mut commands: Commands,
     mut net: ResMut<NetState>,
@@ -27,7 +28,7 @@ pub fn prime_live_world(
     mut meshes: ResMut<Assets<Mesh>>,
     mut water_mats: ResMut<Assets<crate::world::water::WaterMaterial>>,
     mut images: ResMut<Assets<Image>>,
-    mut assets: Res<AssetServer>,
+    assets: Res<AssetServer>,
     mut terrain_mats: ResMut<Assets<crate::world::splat::TerrainMaterial>>,
 ) {
     if *primed || net.status != NetStatus::Connected {
@@ -237,17 +238,17 @@ pub fn sync_resources(
         let mut animals = 0;
         for (_, _, _, prop) in &q_live {
             total += 1;
-            if let Some(p) = prop {
-                if matches!(
+            if let Some(p) = prop
+                && matches!(
                     p.kind,
                     PropKind::AnimalBoar
                         | PropKind::AnimalDeer
                         | PropKind::AnimalWaterDeer
                         | PropKind::AnimalSquirrel
                         | PropKind::AnimalPheasant
-                ) {
-                    animals += 1;
-                }
+                )
+            {
+                animals += 1;
             }
         }
         info!("[net] 라이브 자원 실체 {total}개 (동물 {animals})");

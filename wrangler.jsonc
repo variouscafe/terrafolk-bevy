@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "terrafolk-bevy",
+  "name": "terrafolk-rust",
   "compatibility_date": "2026-10-12",
   "pages_build_output_dir": "dist",
   "observability": {

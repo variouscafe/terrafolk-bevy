@@ -1,24 +1,35 @@
 //! 카메라 리그 — 45° 고정 절대각(아이소 순수성) + 저 FOV.
-//! 줌: 휠·핀치 제스처(트랙패드)·모바일 두 손가락·키보드(+/-) — 감도 강화.
-//! 팬: 드래그 그랩(마우스·한 손가락 터치) + WASD/화살표.
+//! 줌: 휠·트랙패드 핀치 제스처·모바일 두 손가락·키보드(+/-) — 줌투커서 지원.
+//! 팬: 광선 그랩(camera_input — 1:1 추적) + WASD/화살표 + 관성.
 //! 줌·팬 모두 목표값 누적 → 지수 스무딩(전후 0.3~4.2배).
 
 use bevy::input::gestures::PinchGesture;
-use bevy::input::mouse::MouseButton;
-use bevy::input::touch::Touch;
+use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
 
-use super::data::SIZE;
+use super::camera_input::{PointerInput, ground_at};
+use super::data::WorldData;
 
 /// 줌 범위 — 거리 = 15×zoom(최대 줌인 4.5m ↔ 최대 줌아웃 63m 고도)
-const ZOOM_MIN: f32 = 0.3;
-const ZOOM_MAX: f32 = 4.2;
+pub const ZOOM_MIN: f32 = 0.3;
+pub const ZOOM_MAX: f32 = 4.2;
 /// 스무딩 계수(초당 수렴 속도)
 const ZOOM_SMOOTH: f32 = 9.0;
 /// 카메라 고도 계수(pan_offset과 정합)
 const CAM_DIST: f32 = 15.0;
-/// 수직 시야 → 화면당 세계 스케일 환산(fov 32°)
-const FOV_TAN: f32 = 0.287; // tan(16°)
+
+/// 휠 줌 — 한 스텝(노치)당 배율 기수(1.65^Δ)·Δ 게인
+const WHEEL_ZOOM_BASE: f32 = 1.65;
+const WHEEL_ZOOM_GAIN: f32 = 1.0;
+/// 트랙패드 핀치 제스처 감도(macOS·iOS — 프레임당 스케일에 곱함)
+const PINCH_GESTURE_GAIN: f32 = 5.0;
+/// 모바일 두 손가락 핀치 — 프레임당 줌 비 클램프(상용 체감 폭)
+pub const PINCH_FRAME_MIN: f32 = 0.55;
+pub const PINCH_FRAME_MAX: f32 = 1.8;
+/// 키보드 +/- 줌 속도(초당 배율 변화율)
+const KEY_ZOOM_RATE: f32 = 1.4;
+/// 키보드 팬 속도(초·줌 1 기준 월드 단위)
+const KEY_PAN_SPEED: f32 = 16.0;
 
 #[derive(Resource)]
 pub struct CameraRig {
@@ -30,7 +41,7 @@ pub struct CameraRig {
 impl Default for CameraRig {
     fn default() -> Self {
         CameraRig {
-            target: Vec2::splat(SIZE as f32 / 2.0),
+            target: Vec2::splat(super::data::SIZE as f32 / 2.0),
             zoom: 1.0,
             zoom_goal: 1.0,
         }
@@ -55,117 +66,117 @@ fn pan_offset(zoom: f32, rig: &CameraRig) -> Vec3 {
     Vec3::new(rig.target.x, d, rig.target.y + d)
 }
 
-#[derive(Default)]
-pub struct DragState {
-    /// 마우스 드래그 직전 커서(논리 px)
-    mouse_prev: Option<Vec2>,
-    /// 한 손가락 터치 (id, 직전 위치)
-    touch_prev: Option<(u64, Vec2)>,
+/// 회전은 항상 동일(부저각 고정) — 위치만 옮긴 가상 카메라 변환.
+/// 줌 스무딩 직후·팬 적용 전 좌표계로 그랩/앵커 광선을 계산한다.
+fn camera_at(gt: &GlobalTransform, pos: Vec3) -> GlobalTransform {
+    GlobalTransform::from_translation(pos - gt.translation()) * *gt
 }
 
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 입력·카메라·월드를 한 프레임 안에서 순서 보정
 pub fn camera_control(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    wheel: Res<bevy::input::mouse::AccumulatedMouseScroll>,
+    mouse: Res<ButtonInput<bevy::input::mouse::MouseButton>>,
+    wheel: Res<AccumulatedMouseScroll>,
     mut pinch: MessageReader<PinchGesture>,
     touches: Res<Touches>,
     window: Single<&Window>,
     mut rig: ResMut<CameraRig>,
-    world: Res<super::data::WorldData>,
-    mut q: Query<&mut Transform, With<Camera3d>>,
-    mut pinch_prev: Local<Option<(u64, u64, f32)>>,
-    mut drag: Local<DragState>,
+    mut input: ResMut<PointerInput>,
+    world: Res<WorldData>,
+    mut q: Query<(&Camera, &GlobalTransform, &mut Transform), With<Camera3d>>,
 ) {
-    // ── 화면→세계 스케일(드래그 팬 정밀도) — 줌 연동
-    let w = window.width();
-    let dist = CAM_DIST * rig.zoom;
-    let per_px_h = 2.0 * dist * FOV_TAN / w.max(1.0);
-    let per_px_v = per_px_h * 1.414; // 45° 부저각 수직 왜곡
+    let Ok((camera, gt, mut tr)) = q.single_mut() else {
+        return;
+    };
+    let dt = time.delta_secs().max(1e-4);
+    let cursor = window.cursor_position();
 
-    // ── 드래그 그랩 팬(마우스) — 지도를 잡고 끌기
-    if mouse.pressed(MouseButton::Left) {
-        if let Some(pos) = window.cursor_position() {
-            if let Some(prev) = drag.mouse_prev {
-                let d = pos - prev;
-                rig.target.x -= d.x * per_px_h;
-                rig.target.y -= d.y * per_px_v;
-            }
-            drag.mouse_prev = Some(pos);
-        }
-    } else {
-        drag.mouse_prev = None;
+    // ── 1) 터치 제스처 전이 + 두 손가락 핀치 비(줌 목표 반영 전에 확정)
+    let pinch_zoom = input.begin_frame(&mouse, &touches);
+
+    // ── 2) 줌 입력 누적
+    // 휠 — 상용 체감 배율(노치당 ~1.65배). 커서가 있으면 줌투커서 앵커 지정
+    if wheel.delta.y.abs() > 1e-4 {
+        let d = (wheel.delta.y * WHEEL_ZOOM_GAIN).clamp(-4.0, 4.0);
+        rig.zoom_goal *= WHEEL_ZOOM_BASE.powf(-d);
+        input.zoom_anchor = cursor;
+    }
+    // 트랙패드 핀치 제스처(macOS/iOS) — 감도 ×5.0, 앵커는 커서
+    let mut gestured = false;
+    for g in pinch.read() {
+        rig.zoom_goal *= 1.0 / (1.0 + (g.0 * PINCH_GESTURE_GAIN).clamp(-0.9, 0.9));
+        gestured = true;
+    }
+    if gestured {
+        input.zoom_anchor = cursor;
+    }
+    // 모바일 두 손가락 핀치 비(begin_frame에서 전이 판정 완료)
+    rig.zoom_goal *= pinch_zoom;
+    // 키보드 +/- — 뷰 중심 줌(앵커 없음)
+    if keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadAdd) {
+        rig.zoom_goal *= 1.0 - KEY_ZOOM_RATE * dt;
+    }
+    if keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadSubtract) {
+        rig.zoom_goal *= 1.0 + KEY_ZOOM_RATE * dt;
     }
 
-    // ── 한 손가락 터치 드래그 팬(모바일)
-    let touch_list: Vec<&Touch> = touches.iter().collect();
-    if touch_list.len() == 1 {
-        let t = touch_list[0];
-        match drag.touch_prev {
-            Some((id, prev)) if id == t.id() => {
-                let d = t.position() - prev;
-                rig.target.x -= d.x * per_px_h;
-                rig.target.y -= d.y * per_px_v;
-            }
-            _ => {}
-        }
-        drag.touch_prev = Some((t.id(), t.position()));
-    } else {
-        drag.touch_prev = None;
-    }
+    // ── 3) 목표 클램프 → 지수 스무딩
+    rig.zoom_goal = rig.zoom_goal.clamp(ZOOM_MIN, ZOOM_MAX);
+    let k = 1.0 - (-(ZOOM_SMOOTH * dt)).exp();
+    let zoom_prev = rig.zoom;
+    rig.zoom += (rig.zoom_goal - rig.zoom) * k;
+    let zoom_moved = (rig.zoom - zoom_prev).abs() > 1e-5;
 
-    // ── 팬(WASD·화살표) — 줌 배율 반영 속도
+    // ── 4) 이번 프레임 적용될 카메라(줌 반영·팬 적용 전) — 그랩 광선 기준.
+    //    그랩 팬 델타는 카메라 평행이동 불변이므로 팬 전 좌표로 계산해도 정확하다.
+    let gt_next = camera_at(gt, pan_offset(rig.zoom, &rig));
+
+    // ── 5) 그랩 팬(마우스·한 손가락·핀치 중심) + 관성
+    let frame = input.apply_pans(camera, &gt_next, &world, &mouse, &touches, cursor, dt);
+    rig.target += frame.pan;
+
+    // ── 6) 키보드 팬(WASD·화살표) — 줌 배율 반영 속도
     let mut dir = Vec2::ZERO;
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) { dir.y -= 1.0; }
     if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) { dir.y += 1.0; }
     if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) { dir.x -= 1.0; }
     if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) { dir.x += 1.0; }
     if dir != Vec2::ZERO {
-        let sp = 16.0 * rig.zoom * time.delta_secs();
+        let sp = KEY_PAN_SPEED * rig.zoom * dt;
         rig.target += dir.normalize() * sp;
     }
 
-    // ── 줌 입력 누적
-    // 휠 — 감도 강화(한 스텝 체감 ~40%)
-    if wheel.delta.y.abs() > 1e-4 {
-        let d = (wheel.delta.y * 0.8).clamp(-4.0, 4.0);
-        rig.zoom_goal *= 1.5_f32.powf(-d);
-    }
-    // 트랙패드 핀치 제스처(macOS/iOS) — 감도 ×3.5
-    for g in pinch.read() {
-        rig.zoom_goal *= 1.0 / (1.0 + (g.0 * 3.5).clamp(-0.7, 0.7));
-    }
-    // 모바일 두 손가락 핀치 — 터치 쌍 거리 비로 스케일
-    if touch_list.len() == 2 {
-        let (a, b) = (touch_list[0], touch_list[1]);
-        let tdist = a.position().distance(b.position());
-        if let Some((id0, id1, prev)) = *pinch_prev {
-            if a.id() == id0 && b.id() == id1 && prev > 1.0 {
-                rig.zoom_goal *= (prev / tdist).clamp(0.7, 1.4);
+    // ── 7) 줌투커서 — 능동 제스처가 없을 때만. 커서 아래 세계점을 줌 전후로
+    //    고정(줌만 바뀐 카메라 쌍으로 비교해 팬 영향과 분리). 스무딩 수렴까지
+    //    매 프레임 유지해 애니메이션 중에도 앵커가 흔들리지 않는다.
+    if zoom_moved && !frame.gesture_active {
+        if let Some(px) = input.zoom_anchor {
+            // 앵커 기준면 — 앵커 아래 지형 고도(2단 계산)로 잡아 언덕 위에서도 정확
+            let anchor = ground_at(camera, gt, px, 0.0)
+                .and_then(|g| {
+                    let h = world.height_at(g.x.round() as i32, g.z.round() as i32);
+                    ground_at(camera, gt, px, h).or(Some(g))
+                });
+            if let Some(a0) = anchor
+                && let Some(a1) = ground_at(camera, &gt_next, px, a0.y)
+            {
+                rig.target += Vec2::new(a0.x - a1.x, a0.z - a1.z);
             }
         }
-        *pinch_prev = Some((a.id(), b.id(), tdist));
-    } else {
-        *pinch_prev = None;
-    }
-    // 키보드 +/-
-    if keys.pressed(KeyCode::Equal) || keys.pressed(KeyCode::NumpadAdd) {
-        rig.zoom_goal *= 1.0 - 1.4 * time.delta_secs();
-    }
-    if keys.pressed(KeyCode::Minus) || keys.pressed(KeyCode::NumpadSubtract) {
-        rig.zoom_goal *= 1.0 + 1.4 * time.delta_secs();
+    } else if !zoom_moved {
+        input.zoom_anchor = None; // 수렴 완료 — 앵커 해제
     }
 
-    // ── 목표 클램프 → 지수 스무딩
-    rig.zoom_goal = rig.zoom_goal.clamp(ZOOM_MIN, ZOOM_MAX);
-    let k = 1.0 - (-(ZOOM_SMOOTH * time.delta_secs())).exp();
-    rig.zoom += (rig.zoom_goal - rig.zoom) * k;
-
-    // ── 적용
+    // ── 8) 월드 경계 클램프 — 벽에 박으면 관성 즉시 정지(미끄러짐 없음)
     let bound = (world.size as f32 - 2.0).max(2.0);
+    let unclamped = rig.target;
     rig.target = rig.target.clamp(Vec2::splat(2.0), Vec2::splat(bound));
-    if let Ok(mut tr) = q.single_mut() {
-        tr.translation = pan_offset(rig.zoom, &rig);
-        tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
+    if rig.target != unclamped {
+        input.stop_inertia();
     }
+
+    // ── 9) 적용
+    tr.translation = pan_offset(rig.zoom, &rig);
+    tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
 }

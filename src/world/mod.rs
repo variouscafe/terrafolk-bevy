@@ -1,6 +1,7 @@
 //! 월드 — 데모 결정론 데이터 + 2.5D 아이소 렌더(스플랫 지형·3D 소품·하루순환·수면).
 //! 계약: 서버는 정사각 그리드를 주고 클라이언트가 투영(docs/data-contract.md).
 
+pub mod camera_input;
 pub mod camera_rig;
 pub mod data;
 pub mod daynight;
@@ -30,6 +31,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(precip::WeatherState::default())
             .insert_resource(precip::PrecipRig::default())
             .insert_resource(camera_rig::CameraRig::default())
+            .insert_resource(camera_input::PointerInput::default())
             .add_systems(
                 Startup,
                 (

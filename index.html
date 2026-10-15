@@ -20,5 +20,18 @@
                 Javascript and support for canvas is required
             </canvas>
         </div>
+        <script>
+            // 모바일 브라우저 제스처 방어 — winit가 처리하기 전에라도 브라우저 기본
+            // 동작(풀투리프레시·루브밴딩·더블탭 줌)을 확실히 잠근다.
+            // passive:false 필수 — 아니면 preventDefault가 무시된다.
+            // (메인.rs의 prevent_default_event_handling:false는 유지 — true면 F5·Cmd+R 사망)
+            (function () {
+                var c = document.getElementById("bevy");
+                if (!c) return;
+                var block = function (e) { e.preventDefault(); };
+                c.addEventListener("touchstart", block, { passive: false });
+                c.addEventListener("touchmove", block, { passive: false });
+            })();
+        </script>
     </body>
 </html>

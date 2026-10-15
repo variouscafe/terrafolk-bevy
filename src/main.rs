@@ -7,8 +7,8 @@ use bevy::ecs::system::NonSendMarker;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy::winit::WINIT_WINDOWS;
-use terrafolk_bevy::GamePlugin;
 use std::io::Cursor;
+use terrafolk_bevy::GamePlugin;
 use winit::window::Icon;
 
 fn main() {

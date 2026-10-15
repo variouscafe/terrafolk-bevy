@@ -138,10 +138,18 @@ pub fn camera_control(
 
     // ── 6) 키보드 팬(WASD·화살표) — 줌 배율 반영 속도
     let mut dir = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) { dir.y -= 1.0; }
-    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) { dir.y += 1.0; }
-    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) { dir.x -= 1.0; }
-    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) { dir.x += 1.0; }
+    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+        dir.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+        dir.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+        dir.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+        dir.x += 1.0;
+    }
     if dir != Vec2::ZERO {
         let sp = KEY_PAN_SPEED * rig.zoom * dt;
         rig.target += dir.normalize() * sp;
@@ -153,11 +161,10 @@ pub fn camera_control(
     if zoom_moved && !frame.gesture_active {
         if let Some(px) = input.zoom_anchor {
             // 앵커 기준면 — 앵커 아래 지형 고도(2단 계산)로 잡아 언덕 위에서도 정확
-            let anchor = ground_at(camera, gt, px, 0.0)
-                .and_then(|g| {
-                    let h = world.height_at(g.x.round() as i32, g.z.round() as i32);
-                    ground_at(camera, gt, px, h).or(Some(g))
-                });
+            let anchor = ground_at(camera, gt, px, 0.0).and_then(|g| {
+                let h = world.height_at(g.x.round() as i32, g.z.round() as i32);
+                ground_at(camera, gt, px, h).or(Some(g))
+            });
             if let Some(a0) = anchor
                 && let Some(a1) = ground_at(camera, &gt_next, px, a0.y)
             {

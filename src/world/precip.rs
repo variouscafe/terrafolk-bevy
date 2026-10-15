@@ -15,7 +15,9 @@ pub struct WeatherState {
 
 impl Default for WeatherState {
     fn default() -> Self {
-        WeatherState { kind: "clear".to_string() }
+        WeatherState {
+            kind: "clear".to_string(),
+        }
     }
 }
 
@@ -132,7 +134,9 @@ pub fn sync_precip(
     rig.mode = mode;
     let k = 1.0 - (-2.0 * time.delta_secs()).exp();
     rig.intensity += (goal - rig.intensity) * k;
-    let Some(mut mat) = materials.get_mut(&mat_h) else { return };
+    let Some(mut mat) = materials.get_mut(&mat_h) else {
+        return;
+    };
     mat.fade.x = rig.intensity;
     // 모드별 파라미터 — 비: 빠른 스트릭, 눈: 느린 플레이크
     mat.params = if mode == 0 {

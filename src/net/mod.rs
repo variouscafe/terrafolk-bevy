@@ -30,7 +30,10 @@ pub struct NetState {
 
 impl Default for NetState {
     fn default() -> Self {
-        NetState { status: NetStatus::Idle, frame: None }
+        NetState {
+            status: NetStatus::Idle,
+            frame: None,
+        }
     }
 }
 
@@ -155,10 +158,14 @@ fn connect_bridge() {}
 /// 큐 → 최신 프레임 1개만 채택(중간 프레임 스킵 — 1s 주기라 충분).
 pub fn drain_frames(mut queue: Res<FrameQueue>, mut net: ResMut<NetState>) {
     let drained: Vec<String> = {
-        let Ok(mut q) = queue.inner.lock() else { return };
+        let Ok(mut q) = queue.inner.lock() else {
+            return;
+        };
         q.drain(..).collect()
     };
-    let Some(last) = drained.into_iter().last() else { return };
+    let Some(last) = drained.into_iter().last() else {
+        return;
+    };
     match serde_json::from_str::<LiveFrame>(&last) {
         Ok(frame) => {
             if net.status == NetStatus::Idle {

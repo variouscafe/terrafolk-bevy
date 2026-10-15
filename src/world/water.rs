@@ -3,10 +3,10 @@
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::Image;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::pbr::Material;
 use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::shader::ShaderRef;
 
 use super::data::WorldData;
@@ -132,7 +132,10 @@ fn build_water(
         TextureFormat::R8Unorm,
         RenderAssetUsages::default(),
     ));
-    let mesh = Mesh::from(bevy::math::primitives::Plane3d::new(Vec3::Y, Vec2::splat(size / 2.0)));
+    let mesh = Mesh::from(bevy::math::primitives::Plane3d::new(
+        Vec3::Y,
+        Vec2::splat(size / 2.0),
+    ));
     (
         Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(WaterMaterial {

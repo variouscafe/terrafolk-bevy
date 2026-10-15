@@ -7,7 +7,7 @@ use bevy::gltf::{Gltf, GltfAssetLabel};
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 
-use super::data::{WorldData, SIZE};
+use super::data::{SIZE, WorldData};
 
 const WALK_TIME: f32 = 0.85;
 /// 주민 키 목표(미터)
@@ -150,10 +150,15 @@ pub fn villager_ready(
         player.play(idle_i).repeat();
         commands.entity(player_e).insert(player);
     }
-    commands.entity(player_e).insert(AnimationGraphHandle(graph_h));
+    commands
+        .entity(player_e)
+        .insert(AnimationGraphHandle(graph_h));
 
     // 오토펏 — 서브트리 AABB(조상 체인 행렬)로 스케일·착지
-    let kids: Vec<Entity> = children.get(trigger.entity).map(|c| c.iter().collect()).unwrap_or_default();
+    let kids: Vec<Entity> = children
+        .get(trigger.entity)
+        .map(|c| c.iter().collect())
+        .unwrap_or_default();
     if let Some((mn, mx)) = super::models::meshes_aabb(&kids, trigger.entity, &q_walk, &meshes) {
         let size = (mx - mn).max(Vec3::splat(1e-4));
         let s = villager.target_h / size.y;
@@ -188,10 +193,12 @@ pub fn wander(
             if v.t >= 1.0 {
                 v.t = 0.0;
                 v.moving = false;
-                v.idle = 0.4 + rand_free(
-                    (time.elapsed_secs() * 1000.0) as u64 ^ (tr.translation.x as u64).wrapping_mul(31),
-                    2.0,
-                );
+                v.idle = 0.4
+                    + rand_free(
+                        (time.elapsed_secs() * 1000.0) as u64
+                            ^ (tr.translation.x as u64).wrapping_mul(31),
+                        2.0,
+                    );
                 tr.translation = v.to;
             } else {
                 let s = v.t * v.t * (3.0 - 2.0 * v.t); // smoothstep
@@ -213,7 +220,16 @@ pub fn wander(
             (here.0 as u64 * 31 + here.1 as u64).wrapping_mul(2654435761)
                 ^ (time.elapsed_secs() as u64),
         );
-        let dirs = [[0, 1], [0, -1], [1, 0], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+        let dirs = [
+            [0, 1],
+            [0, -1],
+            [1, 0],
+            [-1, 0],
+            [1, 1],
+            [-1, 1],
+            [1, -1],
+            [-1, -1],
+        ];
         let start = (rng.next_u64() % 8) as usize;
         for i in 0..8 {
             let d = dirs[(start + i) % 8];
@@ -250,7 +266,11 @@ pub fn animate_walk_idle(
         }
         anims.current_walk = v.moving;
         if let Ok(mut player) = players.get_mut(anims.player_e) {
-            let idx = if v.moving { anims.walk } else { anims.idle_anim };
+            let idx = if v.moving {
+                anims.walk
+            } else {
+                anims.idle_anim
+            };
             player.play(idx).repeat();
         }
     }

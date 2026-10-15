@@ -24,17 +24,35 @@ impl PropKind {
             PropKind::TreeBroadleaf => ModelSpec {
                 path: "models/MapleTrees.glb",
                 target_h: 5.6,
-                variants: &["MapleTree_1", "MapleTree_2", "MapleTree_3", "MapleTree_4", "MapleTree_5"],
+                variants: &[
+                    "MapleTree_1",
+                    "MapleTree_2",
+                    "MapleTree_3",
+                    "MapleTree_4",
+                    "MapleTree_5",
+                ],
             },
             PropKind::TreePine => ModelSpec {
                 path: "models/PineTrees.glb",
                 target_h: 6.4,
-                variants: &["PineTree_1", "PineTree_2", "PineTree_3", "PineTree_4", "PineTree_5"],
+                variants: &[
+                    "PineTree_1",
+                    "PineTree_2",
+                    "PineTree_3",
+                    "PineTree_4",
+                    "PineTree_5",
+                ],
             },
             PropKind::TreePalm => ModelSpec {
                 path: "models/PalmTrees.glb",
                 target_h: 4.8,
-                variants: &["PalmTree_1", "PalmTree_2", "PalmTree_3", "PalmTree_4", "PalmTree_5"],
+                variants: &[
+                    "PalmTree_1",
+                    "PalmTree_2",
+                    "PalmTree_3",
+                    "PalmTree_4",
+                    "PalmTree_5",
+                ],
             },
             PropKind::TreeSapling => ModelSpec {
                 path: "models/Trees_Normal.glb",
@@ -65,8 +83,11 @@ impl PropKind {
                 path: "models/Flowers.glb",
                 target_h: 0.6,
                 variants: &[
-                    "Flower_1_Clump", "Flower_2_Clump", "Flower_3_Clump",
-                    "Flower_4_Clump", "Flower_5_Clump",
+                    "Flower_1_Clump",
+                    "Flower_2_Clump",
+                    "Flower_3_Clump",
+                    "Flower_4_Clump",
+                    "Flower_5_Clump",
                 ],
             },
             PropKind::GrassClump => ModelSpec {
@@ -150,7 +171,10 @@ impl PropKind {
 }
 
 /// 라이브 동기용 — 종별 씬 핸들(GLB Scene0).
-pub fn prop_scene(kind: PropKind, assets: &AssetServer) -> Handle<bevy::world_serialization::WorldAsset> {
+pub fn prop_scene(
+    kind: PropKind,
+    assets: &AssetServer,
+) -> Handle<bevy::world_serialization::WorldAsset> {
     let spec = kind.model();
     assets.load(GltfAssetLabel::Scene(0).from_asset(spec.path))
 }
@@ -211,11 +235,7 @@ pub fn spawn_props(mut commands: Commands, world: Res<WorldData>, assets: Res<As
                 scale_jitter,
                 variants: spec.variants,
             },
-            Transform::from_translation(Vec3::new(
-                p.x as f32 + 0.5,
-                ground,
-                p.y as f32 + 0.5,
-            )),
+            Transform::from_translation(Vec3::new(p.x as f32 + 0.5, ground, p.y as f32 + 0.5)),
         ));
         if p.kind == PropKind::Campfire {
             commands.spawn((
@@ -298,11 +318,10 @@ pub fn meshes_aabb(
     let mut mn = Vec3::splat(f32::MAX);
     let mut mx = Vec3::splat(f32::MIN);
     for &e in ents {
-        let Ok((_, _, mesh, _, _)) = q.get(e) else { continue };
-        let Some((amn, amx)) = mesh
-            .and_then(|mh| meshes.get(&mh.0))
-            .and_then(mesh_aabb)
-        else {
+        let Ok((_, _, mesh, _, _)) = q.get(e) else {
+            continue;
+        };
+        let Some((amn, amx)) = mesh.and_then(|mh| meshes.get(&mh.0)).and_then(mesh_aabb) else {
             return None; // 미로딩 — 재시도
         };
         let mat = chain_matrix(e, root_e, q);
@@ -320,14 +339,15 @@ pub fn meshes_aabb(
 }
 
 /// 서브트리의 메시 엔티티 전수 수집(이름 병기).
-fn collect_meshes(
-    entity: Entity,
-    q: &FitQuery<'_, '_>,
-    out: &mut Vec<(Entity, String)>,
-) {
-    let Ok((name, children, mesh, _, _)) = q.get(entity) else { return };
+fn collect_meshes(entity: Entity, q: &FitQuery<'_, '_>, out: &mut Vec<(Entity, String)>) {
+    let Ok((name, children, mesh, _, _)) = q.get(entity) else {
+        return;
+    };
     if mesh.is_some() {
-        out.push((entity, name.map(|n| n.as_str().to_string()).unwrap_or_default()));
+        out.push((
+            entity,
+            name.map(|n| n.as_str().to_string()).unwrap_or_default(),
+        ));
     }
     if let Some(children) = children {
         for c in children.iter() {
@@ -341,7 +361,10 @@ fn collect_meshes(
 /// 이름 매칭 메시 1개만 남기고 타 메시는 재귀 파기(묶음 통째 렌더 방지).
 pub fn fit_props(
     mut commands: Commands,
-    q_root: Query<(Entity, &PropRoot, &Children), (With<PropRoot>, Without<Fitted>, Without<FitTransform>)>,
+    q_root: Query<
+        (Entity, &PropRoot, &Children),
+        (With<PropRoot>, Without<Fitted>, Without<FitTransform>),
+    >,
     q_all: FitQuery,
     meshes: Res<Assets<Mesh>>,
 ) {
@@ -398,12 +421,21 @@ pub fn fit_props(
         let clamped = s.clamp(0.02, 6.0);
         #[cfg(target_arch = "wasm32")]
         if (s - clamped).abs() > 1e-6 {
-            web_sys::console::log_1(&format!("FIT 클램프 {:.2}→{:.2} size=({:.2},{:.2},{:.2}) variants={:?}",
-                s, clamped, size.x, size.y, size.z, prop.variants).into());
+            web_sys::console::log_1(
+                &format!(
+                    "FIT 클램프 {:.2}→{:.2} size=({:.2},{:.2},{:.2}) variants={:?}",
+                    s, clamped, size.x, size.y, size.z, prop.variants
+                )
+                .into(),
+            );
         }
         s = clamped;
         let root_y = prop.ground_y - mn.y * s;
-        commands.entity(root_e).insert(FitTransform { root_y, scale: s, rot_y: prop.rot_y });
+        commands.entity(root_e).insert(FitTransform {
+            root_y,
+            scale: s,
+            rot_y: prop.rot_y,
+        });
     }
 }
 
@@ -424,7 +456,11 @@ pub fn apply_fit(
         new_tf.translation.y = fit.root_y;
         new_tf.scale = Vec3::splat(fit.scale);
         new_tf.rotation = Quat::from_rotation_y(fit.rot_y);
-        commands.entity(e).insert(new_tf).insert(Fitted).remove::<FitTransform>();
+        commands
+            .entity(e)
+            .insert(new_tf)
+            .insert(Fitted)
+            .remove::<FitTransform>();
     }
 }
 

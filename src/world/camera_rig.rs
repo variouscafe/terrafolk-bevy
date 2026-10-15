@@ -72,12 +72,13 @@ pub fn camera_control(
     touches: Res<Touches>,
     window: Single<&Window>,
     mut rig: ResMut<CameraRig>,
+    world: Res<super::data::WorldData>,
     mut q: Query<&mut Transform, With<Camera3d>>,
     mut pinch_prev: Local<Option<(u64, u64, f32)>>,
     mut drag: Local<DragState>,
 ) {
     // ── 화면→세계 스케일(드래그 팬 정밀도) — 줌 연동
-    let (w, h) = (window.width(), window.height());
+    let w = window.width();
     let dist = CAM_DIST * rig.zoom;
     let per_px_h = 2.0 * dist * FOV_TAN / w.max(1.0);
     let per_px_v = per_px_h * 1.414; // 45° 부저각 수직 왜곡
@@ -161,7 +162,8 @@ pub fn camera_control(
     rig.zoom += (rig.zoom_goal - rig.zoom) * k;
 
     // ── 적용
-    rig.target = rig.target.clamp(Vec2::splat(2.0), Vec2::splat(SIZE as f32 - 2.0));
+    let bound = (world.size as f32 - 2.0).max(2.0);
+    rig.target = rig.target.clamp(Vec2::splat(2.0), Vec2::splat(bound));
     if let Ok(mut tr) = q.single_mut() {
         tr.translation = pan_offset(rig.zoom, &rig);
         tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);

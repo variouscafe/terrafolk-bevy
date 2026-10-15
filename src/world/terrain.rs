@@ -6,7 +6,7 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 
-use super::data::{WorldData, SIZE, STEP, WATER_BED_Y};
+use super::data::{WorldData, STEP, WATER_BED_Y};
 use super::splat::TerrainMaterial;
 
 const TILE: f32 = 1.0;
@@ -91,6 +91,10 @@ fn push_quad(m: &mut MeshData, quad: [[f32; 3]; 4], n: [f32; 3], uvs: [[f32; 2];
     m.indices.extend_from_slice(&[base, base + 1, base + 2, base + 2, base + 3, base]);
 }
 
+/// 지형 메시 태그 — 라이브 전환 시 일괄 제거용.
+#[derive(Component)]
+pub struct TerrainMesh;
+
 pub fn spawn_terrain(
     mut commands: Commands,
     world: Res<WorldData>,
@@ -98,10 +102,41 @@ pub fn spawn_terrain(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<TerrainMaterial>>,
 ) {
+    let (mesh_h, mat_h) = build_terrain(&world, &assets, &mut meshes, &mut materials);
+    commands.spawn((
+        TerrainMesh,
+        Mesh3d(mesh_h),
+        MeshMaterial3d(mat_h),
+    ));
+}
+
+/// 라이브 지형 스폰(프라임 전환용) — 데모와 동일 빌더·마커.
+pub fn spawn_live_terrain(
+    commands: &mut Commands,
+    world: &WorldData,
+    assets: &AssetServer,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<TerrainMaterial>,
+) {
+    let (mesh_h, mat_h) = build_terrain(world, assets, meshes, materials);
+    commands.spawn((
+        TerrainMesh,
+        Mesh3d(mesh_h),
+        MeshMaterial3d(mat_h),
+    ));
+}
+
+fn build_terrain(
+    world: &WorldData,
+    assets: &AssetServer,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<TerrainMaterial>,
+) -> (Handle<Mesh>, Handle<TerrainMaterial>) {
     let mut m = MeshData::default();
 
-    for y in 0..SIZE {
-        for x in 0..SIZE {
+    let size = world.size;
+    for y in 0..size {
+        for x in 0..size {
             let (xi, yi) = (x as i32, y as i32);
             let t = world.terrain_at(xi, yi);
             let is_water = t == "water";
@@ -193,7 +228,7 @@ pub fn spawn_terrain(
     }
 
     let verts = m.positions.len();
-    let idx_n = m.indices.len();
+    let _ = verts;
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, m.positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals);
@@ -219,9 +254,6 @@ pub fn spawn_terrain(
         extension: ext,
     };
     #[cfg(target_arch = "wasm32")]
-    web_sys::console::log_1(&format!("TERRAIN SPAWNED verts={} indices={}", verts, idx_n).into());
-    commands.spawn((
-        Mesh3d(meshes.add(mesh)),
-        MeshMaterial3d(materials.add(mat)),
-    ));
+    web_sys::console::log_1(&format!("TERRAIN SPAWNED verts={}", verts).into());
+    (meshes.add(mesh), materials.add(mat))
 }

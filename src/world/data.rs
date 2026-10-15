@@ -108,9 +108,12 @@ fn fbm(x: f32, y: f32, base_period: f32, seed: u32) -> f32 {
 
 #[derive(Resource)]
 pub struct WorldData {
-    pub terrain: Vec<u8>,  // SIZE*SIZE, GID 1..6
-    pub height: Vec<i8>,   // SIZE*SIZE, 단계(물 -2, 육지 0..4)
+    pub terrain: Vec<u8>,  // size*size, GID 1..6
+    pub height: Vec<i8>,   // size*size, 단계(물 -2, 육지 0..4)
     pub props: Vec<PropSpec>,
+    pub size: usize,
+    /// 데모(절차) 지형 여부 — false면 라이브(mapJson) 지형
+    pub demo: bool,
 }
 
 impl WorldData {
@@ -118,13 +121,13 @@ impl WorldData {
         y * SIZE + x
     }
     pub fn terrain_at(&self, x: i32, y: i32) -> &'static str {
-        if x < 0 || y < 0 || x >= SIZE as i32 || y >= SIZE as i32 {
+        if x < 0 || y < 0 || x >= self.size as i32 || y >= self.size as i32 {
             return "water";
         }
         TERRAINS[(self.terrain[Self::idx(x as usize, y as usize)] - 1) as usize]
     }
     pub fn height_at(&self, x: i32, y: i32) -> f32 {
-        if x < 0 || y < 0 || x >= SIZE as i32 || y >= SIZE as i32 {
+        if x < 0 || y < 0 || x >= self.size as i32 || y >= self.size as i32 {
             return WATER_BED_Y;
         }
         if self.terrain_at(x, y) == "water" {
@@ -132,6 +135,25 @@ impl WorldData {
         }
         self.height[Self::idx(x as usize, y as usize)] as f32 * STEP
     }
+    /// 라이브 Tiled 맵 → 평면 지형(실 고도 없음 — 물은 -2단).
+    pub fn from_map(gids: &[u8], w: usize, h: usize) -> Self {
+        let n = w.min(h).min(256);
+        let mut terrain = vec![1u8; n * n];
+        for y in 0..n {
+            for x in 0..n {
+                let i = y * w + x;
+                terrain[y * n + x] = gids.get(i).copied().unwrap_or(1).clamp(1, 6);
+            }
+        }
+        let mut height = vec![0i8; n * n];
+        for i in 0..n * n {
+            if TERRAINS[(terrain[i] - 1) as usize] == "water" {
+                height[i] = -2;
+            }
+        }
+        WorldData { terrain, height, props: vec![], size: n, demo: false }
+    }
+
     pub fn walkable(&self, x: i32, y: i32) -> bool {
         let t = self.terrain_at(x, y);
         t != "water" && t != "rock"
@@ -174,7 +196,7 @@ impl WorldData {
         }
 
         // 소품 산포 — 결정론. 지형별 밀도(페인티드 군락 감각).
-        let probe = Self { terrain: terrain.clone(), height: height.clone(), props: vec![] };
+        let probe = Self { terrain: terrain.clone(), height: height.clone(), props: vec![], size: SIZE, demo: true };
         let mut rng = Rng::new(seed ^ 0x5EED);
         let mut props = Vec::new();
         for y in 2..SIZE - 2 {
@@ -230,6 +252,6 @@ impl WorldData {
             props.push(PropSpec { kind, x: ox, y: oy });
         }
 
-        WorldData { terrain, height, props }
+        WorldData { terrain, height, props, size: SIZE, demo: true }
     }
 }

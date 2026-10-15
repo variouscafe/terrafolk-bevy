@@ -123,6 +123,18 @@ impl PropKind {
     }
 }
 
+/// 라이브 동기용 — 종별 씬 핸들(GLB Scene0).
+pub fn prop_scene(kind: PropKind, assets: &AssetServer) -> Handle<bevy::world_serialization::WorldAsset> {
+    let spec = kind.model();
+    assets.load(GltfAssetLabel::Scene(0).from_asset(spec.path))
+}
+
+/// 라이브 동기용 — 종별 (목표높이, 변형목록)만 노출.
+pub fn prop_model(kind: PropKind) -> (f32, &'static [&'static str]) {
+    let spec = kind.model();
+    (spec.target_h, spec.variants)
+}
+
 #[derive(Component)]
 pub struct PropRoot {
     pub kind: PropKind,

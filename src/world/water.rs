@@ -9,7 +9,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::AsBindGroup;
 use bevy::shader::ShaderRef;
 
-use super::data::{WorldData, SIZE};
+use super::data::WorldData;
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct WaterMaterial {
@@ -44,7 +44,7 @@ pub const MAX_SHORE_DIST: f32 = 14.0;
 /// 다중 출발점 BFS — 각 물 셀에서 가장 가까운 육지까지의 타일 거리.
 fn shore_distance_grid(world: &WorldData) -> Vec<u8> {
     use std::collections::VecDeque;
-    let n = SIZE;
+    let n = world.size;
     let mut dist = vec![i32::MAX; n * n];
     let mut q: VecDeque<(usize, usize)> = VecDeque::new();
     for y in 0..n {
@@ -74,6 +74,10 @@ fn shore_distance_grid(world: &WorldData) -> Vec<u8> {
         .collect()
 }
 
+/// 수면 메시 태그 — 라이브 전환 시 재스폰용.
+#[derive(Component)]
+pub struct WaterMesh;
+
 pub fn spawn_water(
     mut commands: Commands,
     world: Res<WorldData>,
@@ -81,13 +85,46 @@ pub fn spawn_water(
     mut materials: ResMut<Assets<WaterMaterial>>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    let size = SIZE as f32;
-    // 해안거리 베이크 — 셀 중심 정렬(샘플 uv = world/SIZE)
-    let data = shore_distance_grid(&world);
+    let handle = build_water(&world, &mut meshes, &mut materials, &mut images);
+    let size = world.size as f32;
+    commands.spawn((
+        WaterMesh,
+        handle,
+        Transform::from_translation(Vec3::new(size / 2.0, -0.18, size / 2.0)),
+    ));
+}
+
+/// 라이브 수면(전환용) — 동일 빌더·마커.
+pub fn spawn_live_water(
+    commands: &mut Commands,
+    world: &WorldData,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<WaterMaterial>,
+    images: &mut Assets<Image>,
+) {
+    let handle = build_water(world, meshes, materials, images);
+    let size = world.size as f32;
+    commands.spawn((
+        WaterMesh,
+        handle,
+        Transform::from_translation(Vec3::new(size / 2.0, -0.18, size / 2.0)),
+    ));
+}
+
+/// 수면 스폰 헬퍼 — 메시+재질 번들.
+fn build_water(
+    world: &WorldData,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<WaterMaterial>,
+    images: &mut Assets<Image>,
+) -> (Mesh3d, MeshMaterial3d<WaterMaterial>) {
+    let size = world.size as f32;
+    // 해안거리 베이크 — 셀 중심 정렬(샘플 uv = world/size)
+    let data = shore_distance_grid(world);
     let shore = images.add(Image::new(
         Extent3d {
-            width: SIZE as u32,
-            height: SIZE as u32,
+            width: world.size as u32,
+            height: world.size as u32,
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
@@ -96,7 +133,7 @@ pub fn spawn_water(
         RenderAssetUsages::default(),
     ));
     let mesh = Mesh::from(bevy::math::primitives::Plane3d::new(Vec3::Y, Vec2::splat(size / 2.0)));
-    commands.spawn((
+    (
         Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(WaterMaterial {
             deep: Vec4::new(0.21, 0.35, 0.55, 0.82),
@@ -105,6 +142,5 @@ pub fn spawn_water(
             wave_scale: Vec4::new(3.2, 0.0, 0.0, 0.0),
             shore,
         })),
-        Transform::from_translation(Vec3::new(size / 2.0, -0.18, size / 2.0)),
-    ));
+    )
 }

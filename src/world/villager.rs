@@ -11,7 +11,7 @@ use super::data::{WorldData, SIZE};
 
 const WALK_TIME: f32 = 0.85;
 /// 주민 키 목표(미터)
-const VILLAGER_H: f32 = 1.62;
+pub const VILLAGER_H: f32 = 1.62;
 
 /// 모델 전방 보정 — Quaternius 리깅는 +Z 전방(실측 후 조정)
 const MODEL_YAW: f32 = 0.0;
@@ -48,6 +48,23 @@ const TINTS: [Color; 6] = [
 ];
 
 const MODELS: [&str; 2] = ["models/VillagerMan.glb", "models/VillagerWoman.glb"];
+
+/// 라이브 에이전트용 — lookJson.sex(있으면) 또는 id 해시로 남/여 선택.
+pub fn model_path_for(id: &str, look: Option<&str>) -> &'static str {
+    if let Some(look) = look {
+        if look.contains("\"sex\":\"") {
+            // lookJson은 {uuid,sex,age} — sex 값 문자로 판별(여성 F/f)
+            if let Some(i) = look.find("\"sex\":\"") {
+                let c = look[i + 7..].chars().next().unwrap_or('M');
+                if c == 'F' || c == 'f' {
+                    return MODELS[1];
+                }
+            }
+        }
+    }
+    let h = id.bytes().fold(0u64, |a, b| a.wrapping_mul(31) + b as u64);
+    MODELS[(h % 2) as usize]
+}
 
 pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Res<AssetServer>) {
     let mut rng = super::data::Rng::new(99);
@@ -160,7 +177,11 @@ fn rand_free(seed: u64, scale: f32) -> f32 {
     super::data::Rng::new(seed.wrapping_mul(2654435761)).f32() * scale
 }
 
-pub fn wander(time: Res<Time>, world: Res<WorldData>, mut q: Query<(&mut Villager, &mut Transform)>) {
+pub fn wander(
+    time: Res<Time>,
+    world: Res<WorldData>,
+    mut q: Query<(&mut Villager, &mut Transform), Without<crate::net::apply::LiveAgentTag>>,
+) {
     for (mut v, mut tr) in &mut q {
         if v.moving {
             v.t += time.delta_secs() / WALK_TIME;

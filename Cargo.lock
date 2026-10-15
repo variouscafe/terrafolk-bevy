@@ -5415,7 +5415,11 @@ dependencies = [
  "console_error_panic_hook",
  "embed-resource",
  "image",
+ "js-sys",
  "log",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
  "web-sys",
  "winit",
 ]

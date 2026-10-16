@@ -471,6 +471,7 @@ pub fn sync_agents(
         &mut crate::world::villager::Villager,
         Option<&mut AgentGrace>,
     )>,
+    mut first_log: Local<u32>,
 ) {
     if net.status != NetStatus::Connected {
         return;
@@ -479,6 +480,20 @@ pub fn sync_agents(
         return;
     };
     const GRACE_SECS: f32 = 5.0;
+    if *first_log == 0 {
+        *first_log = 1;
+        let eligible = frame
+            .agents
+            .iter()
+            .filter(|a| a.kind == "bot" || a.kind == "user")
+            .count();
+        info!(
+            "[net] 주민 동기 시작 — 상태 {:?} · 프레임 에이전트 {}명(대상 {}명)",
+            net.status,
+            frame.agents.len(),
+            eligible
+        );
+    }
 
     // 갱신·제거
     for (e, tag, tr, mut v, grace) in &mut q_live {
@@ -511,6 +526,7 @@ pub fn sync_agents(
     // 신규 — 기존 id 사전 조회(O(1)), 프레임당 O(N×M) 순회 제거
     let live_ids: std::collections::HashSet<&str> =
         q_live.iter().map(|(_, t, _, _, _)| t.0.as_str()).collect();
+    let mut spawned = 0usize;
     for a in &frame.agents {
         if live_ids.contains(a.id.as_str()) {
             continue;
@@ -538,6 +554,10 @@ pub fn sync_agents(
                 Transform::from_translation(Vec3::new(a.x, ground, a.y)),
             ))
             .observe(crate::world::villager::villager_ready);
+        spawned += 1;
+    }
+    if spawned > 0 {
+        info!("[net] 라이브 주민 스폰 {spawned}개 완료");
     }
 }
 

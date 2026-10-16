@@ -99,7 +99,7 @@
     I.translateText(locale, text).then(function (tr) {
       if (tr !== text && mtMap[key] === undefined) {
         mtMap[key] = tr;
-        if (S.popup) schedule();
+        schedule();   // 팝업 몸통·히어로 카드 갱신 — 틱을 기다리지 않는다
       }
     }).catch(function () {});
     return text;
@@ -128,7 +128,7 @@
           '" style="image-rendering:pixelated;border-radius:2px;background:' + spec.accent + '40">';
       }
       window.TF_LOOK.renderItemIcon(spec, 32).then(function (u) {
-        if (u && !iconUrls[key]) { iconUrls[key] = u; if (S.popup) schedule(); }
+        if (u && !iconUrls[key]) { iconUrls[key] = u; schedule(); }
       }).catch(function () {});
       return '<span>⚒</span>';
     }
@@ -293,28 +293,56 @@
     set: { titleKey: 'menu.settings', width: 'max-w-sm' },
   };
 
-  function popupHtml() {
-    if (!S.popup) return '';
+  function popupBody(key) {
+    if (key === 'chars') return charsHtml();
+    if (key === 'res') return resHtml();
+    if (key === 'inventions') return civHtml();
+    if (key === 'log') return logHtml();
+    if (key === 'account') return accountHtml();
+    return setHtml();
+  }
+
+  // 팝업 렌더 — 오버레이·대화상자 뼈대는 유지하고 몸통만 교체한다.
+  // worldsim 틱마다 render가 도는데 루트를 통째로 다시 쓰면 입장 애니메이션
+  // (tf-fade-in)이 매 틱 재시작돼 팝업이 깜빡인다.
+  var popupDom = { key: null, title: null, body: null };
+  function popupUpdate() {
+    var slot = slots.popup;
+    if (!S.popup) {
+      if (popupDom.key !== null) {
+        popupDom = { key: null, title: null, body: null };
+        slot.innerHTML = '';
+      }
+      return;
+    }
     var meta = POPUP_META[S.popup];
     var title = S.popup === 'account' && !hasToken() ? t('menu.login') : t(meta.titleKey);
-    var body;
-    if (S.popup === 'chars') body = charsHtml();
-    else if (S.popup === 'res') body = resHtml();
-    else if (S.popup === 'inventions') body = civHtml();
-    else if (S.popup === 'log') body = logHtml();
-    else if (S.popup === 'account') body = accountHtml();
-    else body = setHtml();
-    return (
-      '<div class="tf-overlay" data-act="close-popup">' +
-        '<div class="tf-dialog ' + meta.width + '" role="dialog" aria-modal="true">' +
-          '<div class="tf-dialog-head">' +
-            '<h2 class="tf-dialog-title">' + esc(title) + '</h2>' +
-            '<button class="tf-dialog-close" data-act="close-popup" title="' + esc(t('btn.close')) + '">' +
-              svg(ICONS.X, 16) + '</button>' +
-          '</div>' + body +
-        '</div>' +
-      '</div>'
-    );
+    if (popupDom.key !== S.popup) {
+      popupDom = { key: S.popup, title: title, body: popupBody(S.popup) };
+      slot.innerHTML =
+        '<div class="tf-overlay" data-act="close-popup">' +
+          '<div class="tf-dialog ' + meta.width + '" role="dialog" aria-modal="true">' +
+            '<div class="tf-dialog-head">' +
+              '<h2 class="tf-dialog-title">' + esc(title) + '</h2>' +
+              '<button class="tf-dialog-close" data-act="close-popup" title="' + esc(t('btn.close')) + '">' +
+                svg(ICONS.X, 16) + '</button>' +
+            '</div>' + popupDom.body +
+          '</div>' +
+        '</div>';
+      return;
+    }
+    if (popupDom.title !== title) {
+      popupDom.title = title;
+      var titleEl = slot.querySelector('.tf-dialog-title');
+      if (titleEl) titleEl.textContent = title;
+    }
+    var body = popupBody(S.popup);
+    if (popupDom.body !== body) {
+      popupDom.body = body;
+      var dialog = slot.querySelector('.tf-dialog');
+      // head 다음 몸통 루트만 교체 — 오버레이 노드는 그대로(애니메이션 유지)
+      if (dialog && dialog.children.length > 1) dialog.children[1].outerHTML = body;
+    }
   }
 
   // ── 캐릭터 팝업(FE CharsPopup 포트) ──
@@ -510,9 +538,12 @@
     return heroPortraits[id] || null;
   }
 
+  var HERO_NEEDS = [['needs.hunger', 'hunger'], ['needs.thirst', 'thirst'],
+    ['needs.fatigue', 'fatigue'], ['needs.warmth', 'warmth']];
+
   function heroNeedBar(pair, needs) {
     var v = Number(needs != null && needs[pair[1]] != null ? needs[pair[1]] : 0);
-    var pct = Math.min(100, Math.max(0, v));
+    var pct = Math.min(100, Math.max(0, Math.round(v)));
     return '<div class="tf-hero-need" title="' + esc(t(pair[0])) + '">' +
       '<span class="tf-hero-need-label">' + esc(t(pair[0])) + '</span>' +
       '<div class="tf-bar tf-hero-bar"><div class="tf-bar-fill' + (v > 70 ? ' hot' : '') +
@@ -523,7 +554,10 @@
 
   var heroCache = {};  // id → 마지막 스냅숏 — 재접속 공백에도 카드 유지(stale 표시)
   var heroSelPrev = null;  // 직전 선택 id — 변경 시 옛 캐시·초상 정리
-  function heroHtml() {
+
+  /** 선택 주민 해석 — 라이브 우선, 프레임 공백(재접속·드랍)은 캐시 스냅숏으로
+   *  흡수(stale 표시). 선택 해제는 Rust 단일 소스(tf.onPickAgent(null))에 맡긴다. */
+  function heroResolve() {
     var a = S.selected ? S.live[S.selected] : null;
     var stale = false;
     if (S.selected !== heroSelPrev) {
@@ -534,29 +568,41 @@
     }
     if (!a) {
       a = heroCache[S.selected || ''];
-      if (!a) return '';
+      if (!a) return null;
       stale = true; // 프레임 공백 — Rust 유예(5s) 안이면 곧 돌아온다
     } else {
       heroCache[a.id] = a;
     }
-    // 선택이 바뀌면 오래된 캐시 정리
-    if (a && a.id !== S.selected) return '';
-    var act = a.actType || a.status || '';
-    var portrait = heroPortrait(a.id);
-    var needs = [['needs.hunger', 'hunger'], ['needs.thirst', 'thirst'],
-      ['needs.fatigue', 'fatigue'], ['needs.warmth', 'warmth']]
-      .map(function (p) { return heroNeedBar(p, a.needs); }).join('');
+    return { a: a, stale: stale };
+  }
+
+  function heroBadgeHtml(a) {
+    return a.mine
+      ? '<span class="tf-hero-badge mine">' + esc(t('mine.badge')) + '</span>'
+      : (a.kind === 'bot'
+        ? '<span class="tf-hero-badge bot">' + esc(tOr('hero.badge.bot', '봇')) + '</span>'
+        : '');
+  }
+
+  /** 소지 칩(최대 4종 + 나머지 수) — 뼈대 생성과 값 갱신이 같은 문자열을 쓴다. */
+  function heroInvHtml(a) {
     var invKeys = Object.keys(a.inv || {}).filter(function (k) { return (a.inv[k] || 0) > 0; });
     var inv = invKeys.slice(0, 4).map(function (item) {
       return '<span class="tf-chipbox" title="' + esc(tOr('item.' + item, item)) + '">' +
         chipIconHtml(item) + '<span class="tf-qty">×' + a.inv[item] + '</span></span>';
     }).join('');
     if (invKeys.length > 4) inv += '<span class="tf-chipbox more">+' + (invKeys.length - 4) + '</span>';
-    var badge = a.mine
-      ? '<span class="tf-hero-badge mine">' + esc(t('mine.badge')) + '</span>'
-      : (a.kind === 'bot'
-        ? '<span class="tf-hero-badge bot">' + esc(tOr('hero.badge.bot', '봇')) + '</span>'
-        : '');
+    return inv;
+  }
+
+  /** 카드 뼈대 — 선택·로케일이 바뀔 때에만 다시 쓴다(입장 애니메이션은 그때만).
+   *  틱마다 달라지는 값(초상·욕구·소지·행동)은 heroApply가 제자리 갱신 —
+   *  노드가 유지돼야 걷기 스프라이트·입장 애니메이션이 매 틱 재시작되지
+   *  않는다(깜빡임의 원인). */
+  function heroHtml(a, stale, portrait) {
+    var inv = heroInvHtml(a);
+    var badge = heroBadgeHtml(a);
+    var act = a.actType || a.status || '';
     return '<aside class="tf-hero' + (stale ? ' stale' : '') + '" role="region" aria-label="' + esc(tOr('hero.card', '주민 카드')) + '">' +
       '<div class="tf-hero-frame">' +
         '<div class="tf-hero-ground"></div>' +
@@ -567,14 +613,18 @@
       '<div class="tf-hero-main">' +
         '<header class="tf-hero-head">' +
           '<span class="tf-hero-name" style="color:' + I.agentColor(a.id) + '">' + esc(a.name) + '</span>' +
-          badge +
+          '<span class="tf-hero-badge-slot"' + (badge ? '' : ' style="display:none"') + '>' + badge + '</span>' +
           '<button class="tf-hero-x" data-act="hero-close" title="' + esc(t('btn.close')) + '" aria-label="' + esc(t('btn.close')) + '">' + svg(ICONS.X, 14) + '</button>' +
         '</header>' +
         '<div class="tf-hero-act">' +
-          (act ? '<span class="tf-hero-act-kind">' + esc(tOr('act.' + act, act)) + '</span>' : '') +
-          (a.goalText ? '<span class="tf-hero-goal">' + esc(mt(a.goalText)) + '</span>' : '') +
+          '<span class="tf-hero-act-kind"' + (act ? '' : ' style="display:none"') + '>' +
+            (act ? esc(tOr('act.' + act, act)) : '') + '</span>' +
+          '<span class="tf-hero-goal"' + (a.goalText ? '' : ' style="display:none"') + '>' +
+            (a.goalText ? esc(mt(a.goalText)) : '') + '</span>' +
         '</div>' +
-        '<div class="tf-hero-needs">' + needs + '</div>' +
+        '<div class="tf-hero-needs">' +
+          HERO_NEEDS.map(function (p) { return heroNeedBar(p, a.needs); }).join('') +
+        '</div>' +
         '<div class="tf-hero-inv' + (inv ? '' : ' empty') + '">' +
           (inv || '<span class="tf-empty">' + esc(t('panel.inventory.empty')) + '</span>') +
         '</div>' +
@@ -588,6 +638,97 @@
         '</div>' +
       '</div>' +
     '</aside>';
+  }
+
+  // 카드 DOM 참조 — 뼈대 재구축(선택·로케일 변경) 시 다시 잡는다
+  var heroDom = null;
+  function heroUpdate() {
+    var r = heroResolve();
+    var slot = slots.hero;
+    if (!r) {
+      if (heroDom) { heroDom = null; slot.innerHTML = ''; }
+      return;
+    }
+    var a = r.a;
+    var portrait = heroPortrait(a.id);
+    if (!heroDom || heroDom.id !== a.id || heroDom.locale !== I.getLocale() || !slot.contains(heroDom.el)) {
+      slot.innerHTML = heroHtml(a, r.stale, portrait);
+      var el = slot.firstElementChild;
+      heroDom = {
+        id: a.id, locale: I.getLocale(), el: el,
+        sprite: el.querySelector('.tf-hero-sprite'),
+        name: el.querySelector('.tf-hero-name'),
+        badge: el.querySelector('.tf-hero-badge-slot'),
+        actKind: el.querySelector('.tf-hero-act-kind'),
+        goal: el.querySelector('.tf-hero-goal'),
+        needs: Array.prototype.map.call(el.querySelectorAll('.tf-hero-need'), function (row) {
+          return { fill: row.querySelector('.tf-bar-fill'), val: row.querySelector('.tf-hero-need-val') };
+        }),
+        inv: el.querySelector('.tf-hero-inv'),
+        nameText: null, badgeHtml: null, actText: null, goalText: null, invHtml: null, portrait: null,
+      };
+    }
+    heroApply(a, r.stale, portrait);
+  }
+
+  /** 값 갱신 — 노드를 유지한 채 고치므로 입장·걷기 애니메이션이 이어지고
+   *  욕구 바 transition도 자연스럽게 흐른다. */
+  function heroApply(a, stale, portrait) {
+    var d = heroDom;
+    if (!d) return;
+    d.el.classList.toggle('stale', stale);
+    if (d.portrait !== (portrait || '')) {
+      d.portrait = portrait || '';
+      if (portrait) {
+        d.sprite.classList.remove('empty');
+        d.sprite.style.backgroundImage = 'url(' + portrait + ')';
+        d.sprite.innerHTML = '';
+      } else {
+        d.sprite.classList.add('empty');
+        d.sprite.style.backgroundImage = '';
+        d.sprite.innerHTML = svg(ICONS.User, 28);
+      }
+    }
+    if (d.nameText !== a.name) {
+      d.nameText = a.name;
+      d.name.textContent = a.name;
+      d.name.style.color = I.agentColor(a.id);
+    }
+    var badge = heroBadgeHtml(a);
+    if (d.badgeHtml !== badge) {
+      d.badgeHtml = badge;
+      d.badge.innerHTML = badge;
+      d.badge.style.display = badge ? '' : 'none';
+    }
+    var act = a.actType || a.status || '';
+    if (d.actText !== act) {
+      d.actText = act;
+      d.actKind.textContent = act ? tOr('act.' + act, act) : '';
+      d.actKind.style.display = act ? '' : 'none';
+    }
+    var goal = a.goalText || '';
+    if (d.goalText !== goal) {
+      d.goalText = goal;
+      d.goal.textContent = goal ? mt(goal) : '';
+      d.goal.style.display = goal ? '' : 'none';
+    }
+    HERO_NEEDS.forEach(function (pair, i) {
+      var row = d.needs[i];
+      if (!row) return;
+      var v = Number(a.needs != null && a.needs[pair[1]] != null ? a.needs[pair[1]] : 0);
+      var hot = v > 70;
+      var pct = Math.min(100, Math.max(0, Math.round(v)));
+      row.fill.style.width = pct + '%';
+      row.fill.classList.toggle('hot', hot);
+      row.val.textContent = Math.round(v);
+      row.val.classList.toggle('hot', hot);
+    });
+    var inv = heroInvHtml(a);
+    if (d.invHtml !== inv) {
+      d.invHtml = inv;
+      d.inv.innerHTML = inv || '<span class="tf-empty">' + esc(t('panel.inventory.empty')) + '</span>';
+      d.inv.classList.toggle('empty', !inv);
+    }
   }
 
   // ── 자원 팝업(FE popups res 포트) ──
@@ -1114,11 +1255,44 @@
     });
   }
 
+  // 섹션 슬롯 — worldsim 틱마다 render가 도므로 루트를 통째로 다시 쓰면
+  // 팝업(tf-fade-in)·히어로 카드(tf-hero-in·걷기)의 입장 애니메이션이
+  // 매 틱 재시작돼 깜빡인다. 슬롯을 고정하고 바뀐 섹션만 교체하며, 팝업·
+  // 히어로는 뼈대 유지 + 값 갱신(heroUpdate·popupUpdate)으로 렌더한다.
+  var SLOT_ORDER = ['topbar', 'hero', 'popup', 'credits', 'look'];
+  var slots = {};
+  var slotHtml = {};   // name → 마지막으로 쓴 HTML — 문자열 비교로 교체 차단
+  function ensureSlots(root) {
+    SLOT_ORDER.forEach(function (name) {
+      var el = slots[name];
+      if (!el || !root.contains(el)) {
+        el = root.querySelector(':scope > [data-slot="' + name + '"]');
+        if (!el) {
+          el = document.createElement('div');
+          el.setAttribute('data-slot', name);
+          root.appendChild(el);
+        }
+        slots[name] = el;
+        slotHtml[name] = null;
+      }
+    });
+  }
+  function setSlot(name, html) {
+    if (slotHtml[name] === html) return;
+    slotHtml[name] = html;
+    slots[name].innerHTML = html;
+  }
+
   function render() {
     var root = ensureRoot();
+    ensureSlots(root);
     var saved = collectScrolls(root);
     var focus = document.activeElement && document.activeElement.id;
-    root.innerHTML = topbarHtml() + heroHtml() + popupHtml() + (S.creditsOpen ? creditsHtml() : '') + (S.lookEdit ? lookHtml() : '');
+    setSlot('topbar', topbarHtml());
+    heroUpdate();
+    popupUpdate();
+    setSlot('credits', S.creditsOpen ? creditsHtml() : '');
+    setSlot('look', S.lookEdit ? lookHtml() : '');
     applyScrolls(root, saved);
     if (focus) {
       var el = document.getElementById(focus);
@@ -1447,12 +1621,26 @@
   }
 
   // ═══════════════ feed — worldsim.js가 호출 ═══════════════
+  // 침전 오버레이 — CSS(.tf-precip) 구동. 3D 파이프라인은 WebGL2 프래그먼트
+  // 유니폼 한도(12) 초과로 침전 재질을 만들 수 없어 여기서 처리한다.
+  var precipEl = null;
+  function syncPrecip(weather) {
+    if (!precipEl) precipEl = document.querySelector('.tf-precip');
+    if (!precipEl) return;
+    var cls = 'tf-precip';
+    if (weather === 'rain') cls += ' rain';
+    else if (weather === 'storm') cls += ' rain storm';
+    else if (weather === 'snow') cls += ' snow';
+    if (precipEl.className !== cls) precipEl.className = cls;
+  }
+
   function feedFrame(f) {
     // 시계
     S.clock = {
       day: f.day, hour: f.hour, minute: f.minute, season: f.season,
       weather: f.weather, sunrise: f.sunrise, sunset: f.sunset,
     };
+    syncPrecip(f.weather);
     // 주민 — 프레임에 없는 기존 행은 유지(이름 시드), 퇴장 제거
     var seen = {};
     (f.agents || []).forEach(function (a) {

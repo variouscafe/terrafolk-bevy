@@ -1,12 +1,12 @@
 // 침전 오버레이 — 화면공간 비 스트릭/눈 플레이크(비조명 알파).
-// 카메라 자식 쿼드: uv가 화면 좌표. params=(speed, density, slant, mode), fade.x=강도.
+// 카메라 자식 쿼드: uv가 화면 좌표. params=(speed, density, slant, fade).
+// 모드는 speed로 판별(비 1.35·눈 0.16) — 유니폼 1개 한도(WebGL2 12개).
 #import bevy_pbr::{
     mesh_view_bindings::globals,
     forward_io::VertexOutput,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> params: vec4<f32>;
-@group(#{MATERIAL_BIND_GROUP}) @binding(1) var<uniform> fade: vec4<f32>;
 
 fn hash(p: vec2<f32>) -> f32 {
     var q = fract(p * vec2<f32>(127.1, 311.7));
@@ -60,7 +60,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 
     var col = vec3<f32>(0.78, 0.84, 0.95);
     var m = 0.0;
-    if params.w < 0.5 {
+    if params.x < 0.7 {
         // 비 — 원근 2레이어(뒤 느리게·옅게)
         m = streaks(uv, t, 34.0 * params.y, params.x, 0.55, 0.30, 3.0) * 0.4
           + streaks(uv, t, 62.0 * params.y, params.x * 1.7, 0.5, 0.18, 17.0) * 0.75;
@@ -72,6 +72,6 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         col = vec3<f32>(0.97, 0.98, 1.0);
     }
 
-    let alpha = clamp(m * edge * fade.x, 0.0, 0.85);
+    let alpha = clamp(m * edge * params.w, 0.0, 0.85);
     return vec4<f32>(col, alpha);
 }

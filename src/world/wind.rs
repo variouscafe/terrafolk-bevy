@@ -14,12 +14,11 @@ use std::collections::HashMap;
 use super::data::PropKind;
 
 /// 유니폼·파라미터 없음 — 바람 성격은 셰이더 통일 곡선(높이 선형 증폭).
-/// WebGL2 fragment 유니폼 12개 한도로 어떤 확장 바인딩도 불가.
+/// WebGL2 fragment 유니폼 12개 한도로 어떤 확장 바인딩도 불가 — 확장이
+/// 바인딩을 0개 갖는다(장식용 _pad 유니폼조차 AlphaBlend 파이프라인을
+/// 13개로 밀어 죽였다).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
-pub struct WindExtension {
-    #[doc(hidden)]
-    pub _pad: u32,
-}
+pub struct WindExtension {}
 
 impl MaterialExtension for WindExtension {
     fn vertex_shader() -> ShaderRef {
@@ -83,7 +82,7 @@ pub fn apply_wind(
                         base.alpha_mode = AlphaMode::Mask(0.5);
                         wind_mats.add(WindMaterial {
                             base,
-                            extension: WindExtension::default(),
+                            extension: WindExtension {},
                         })
                     })
                     .clone();

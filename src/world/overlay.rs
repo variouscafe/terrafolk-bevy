@@ -193,11 +193,11 @@ pub fn hover_res(
         let mut hit: Option<u32> = None;
         let mut best_d = f32::MAX;
         for (tag, tr, rect, prop) in &q_res {
-            if let Some(rect) = rect {
-                if rect.contains(tx, tz) {
-                    hit = Some(tag.0);
-                    break;
-                }
+            if let Some(rect) = rect
+                && rect.contains(tx, tz)
+            {
+                hit = Some(tag.0);
+                break;
             }
             let interactive = prop.is_some_and(|p| {
                 matches!(

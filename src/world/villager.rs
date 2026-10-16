@@ -103,6 +103,7 @@ pub struct VillagerPending(pub f32);
 
 /// 씬 스폰 완료 — 애니메이션 그래프 연결 + 오토펏. 자산 비동기 로드로 아직
 /// 못 끝내면 VillagerPending을 남기고, retry_villager_setup이 완결한다.
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — finish_villager_setup과 동일 세트
 pub fn villager_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
@@ -139,6 +140,7 @@ pub fn villager_ready(
 
 /// 스폰 완료 재시도 — Gltf·클립·AnimationPlayer가 비동기로 늦게 도착하는
 /// 경합을 매 프레임 재시도로 흡수(성공 시 마커 제거, 60s 포기).
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — finish_villager_setup과 동일 세트
 pub fn retry_villager_setup(
     time: Res<Time>,
     mut commands: Commands,

@@ -13,3 +13,5 @@
 ## 개발·배포 절차
 
 실행·구조·배포 상세는 `README.md`를 참조할 것.
+
+**PRD 테스트 URL**: 자동화 테스트(헤드리스·Playwright 등)는 https://terrafolk-rust.pages.dev 로 접속할 것. 커스텀 도메인(terrafolk.suseona.com)은 Cloudflare 봇 방어가 자동화 접속을 챌린지(403)로 차단한다 — 사람 브라우저는 통과, 자동 검증은 pages.dev 사용. 단 suseona.com 존의 API(tf-api)도 헤드리스 지문을 차단할 수 있어 라이브 백엔드 연동 E2E가 필요하면 headed 모드(`headless: false` + `--disable-blink-features=AutomationControlled` + 실제 UA)로 실행할 것.

@@ -5,9 +5,12 @@
 //! 팬: 광선 그랩(camera_input — 1:1 추적, 정사영 평행광선에도 동일) + WASD + 관성.
 
 use bevy::camera::ScalingMode;
+use bevy::core_pipeline::tonemapping::DebandDither;
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::AccumulatedMouseScroll;
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::view::ColorGrading;
 
 use super::camera_input::{PointerInput, ground_at};
 use super::data::WorldData;
@@ -84,7 +87,17 @@ pub fn spawn_camera(mut commands: Commands) {
     let rig = CameraRig::default();
     let mut tr = Transform::from_translation(pan_offset(&rig));
     tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
-    commands.spawn((Camera3d::default(), ortho_projection(), tr));
+    commands.spawn((
+        Camera3d::default(),
+        ortho_projection(),
+        tr,
+        // 후처리 — DebandDither(하늘 그라데이션 밴딩 제거, 웹 특히 유효),
+        // ColorGrading(daynight::apply_sky가 하루·날씨 무드로 구동),
+        // Bloom(NATURAL — 모닥불 불꽃 등 발광체 번짐. Hdr 자동 요구).
+        DebandDither::Enabled,
+        ColorGrading::default(),
+        Bloom::NATURAL,
+    ));
 }
 
 /// 회전은 항상 동일(부저각 고정) — 위치만 옮긴 가상 카메라 변환.

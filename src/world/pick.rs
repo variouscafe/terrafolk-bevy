@@ -125,7 +125,7 @@ pub fn pick_agent(
     mut sel: ResMut<Selection>,
     mut press: Local<Option<Vec2>>,
 ) {
-    if keys.just_pressed(KeyCode::Escape) {
+    if keys.just_pressed(KeyCode::Escape) && !esc_eaten_by_ui() {
         sel.id = None;
         sel.entity = None;
         notify_pick(None);
@@ -299,6 +299,35 @@ pub fn ui_typing() -> bool {
             .and_then(|tf| js_sys::Reflect::get(&tf, &"uiTyping".into()).ok())
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        false
+    }
+}
+
+/// 이번 Escape로 DOM 모달을 닫았는지 — tf.modalEsc()가 읽으면서 지운다.
+/// 같은 키 입력에서 JS 핸들러가 먼저 모달을 닫으므로, 프레임 시점의 플래그
+/// 읽기로는 판별 불가(이미 닫힌 뒤). 래치 1회 소진 계약으로 양보 판정.
+fn esc_eaten_by_ui() -> bool {
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::prelude::*;
+        let Some(window) = web_sys::window() else {
+            return false;
+        };
+        let Ok(tf) = js_sys::Reflect::get(&window.into(), &"terrafolk".into()) else {
+            return false;
+        };
+        let Ok(f) = js_sys::Reflect::get(&tf, &"modalEsc".into()) else {
+            return false;
+        };
+        if let Ok(f) = f.dyn_into::<js_sys::Function>()
+            && let Ok(v) = f.call0(&tf)
+        {
+            return v.as_bool().unwrap_or(false);
+        }
+        false
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

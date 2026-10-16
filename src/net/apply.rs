@@ -14,6 +14,11 @@ pub struct LiveResourceTag(pub u32);
 #[derive(Component)]
 pub struct LiveAgentTag(pub String);
 
+/// 프레임 공백 유예(초) — 재접속·드랍 프레임 사이 주민 엔티티를 즉시 철거하지
+/// 않아 선택 링·카메라 추적이 튕기지 않게 한다. 프레임에 있으면 0으로 리셋.
+#[derive(Component, Default)]
+pub struct AgentGrace(pub f32);
+
 /// 라이브 전환 — 데모 지형·물·소품·주민 제거 후 라이브 지형 스폰(1회).
 #[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 데모 철거+라이브 지형 스폰 자원들
 pub fn prime_live_world(
@@ -23,10 +28,17 @@ pub fn prime_live_world(
     q_terrain: Query<Entity, With<crate::world::terrain::TerrainMesh>>,
     q_water: Query<Entity, With<crate::world::water::WaterMesh>>,
     q_props: Query<Entity, With<crate::world::models::PropRoot>>,
-    q_villagers: Query<Entity, With<crate::world::villager::Villager>>,
+    q_villagers: Query<
+        Entity,
+        (
+            With<crate::world::villager::Villager>,
+            Without<LiveAgentTag>,
+        ),
+    >,
     mut world: ResMut<WorldData>,
     mut cam_rig: ResMut<crate::world::camera_rig::CameraRig>,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut std_mats: ResMut<Assets<bevy::pbr::StandardMaterial>>,
     mut water_mats: ResMut<Assets<crate::world::water::WaterMaterial>>,
     mut images: ResMut<Assets<Image>>,
     assets: Res<AssetServer>,
@@ -64,8 +76,21 @@ pub fn prime_live_world(
 
     // 라이브 데이터로 교체 — GID 그리드, 릴리프 합성
     *world = WorldData::from_map(&map.layers[0].data, map.width, map.height);
-    // 카메라 재중심 — 데모 중심 타깃이 라이브 맵 구석을 비추지 않게(마을=맵 중심 광장)
-    cam_rig.target = Vec2::splat(world.size as f32 / 2.0);
+    // 카메라 재중심 — 맵 중심이 아니라 '맵 중심에 가장 가까운 주민'에게.
+    // 주민들은 각자 멀리서 활동 중(채집·이동)이라 광장을 비추면 첫 화면에
+    // 캐릭터가 안 보인다 — 관전 부팅 = 사람이 보이는 화면부터.
+    let center = Vec2::splat(world.size as f32 / 2.0);
+    cam_rig.target = frame
+        .agents
+        .iter()
+        .filter(|a| a.kind == "bot" || a.kind == "user")
+        .map(|a| Vec2::new(a.x, a.y))
+        .min_by(|a, b| {
+            a.distance(center)
+                .partial_cmp(&b.distance(center))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(center);
 
     crate::world::terrain::spawn_live_terrain(
         &mut commands,
@@ -82,14 +107,59 @@ pub fn prime_live_world(
         &mut images,
     );
     // 장식 산포 — GID 기반 결정론(꽃·풀·자갈). 서버 자원 아님(순수 클라이언트 투영).
-    crate::world::models::spawn_decorative_props(&mut commands, &world, &assets);
+    // 구조물 청소 반경(3×3)은 제외 — 지붕 위 바위·꽃과 집을 덮는 덤불 방지.
+    let structural: std::collections::HashSet<(u16, u16)> = frame
+        .resources
+        .iter()
+        .filter(|r| structural_kind(&r.kind))
+        .map(|r| (r.x, r.y))
+        .collect();
+    let cleared = cleared_tiles(&structural);
+    let mut scene_cache = std::collections::HashMap::new();
+    for p in world
+        .decorative_props()
+        .into_iter()
+        .filter(|p| !cleared.contains(&(p.x as i32, p.y as i32)))
+    {
+        crate::world::models::spawn_one_prop(
+            &mut commands,
+            &world,
+            &assets,
+            &mut meshes,
+            &mut std_mats,
+            &mut scene_cache,
+            &p,
+        );
+    }
 
     // map은 1회 소비(이후 프레임에서 중복 파싱 방지)
     net.frame = Some(LiveFrame {
         map: None,
         ..frame.clone()
     });
+    notify_prime();
 }
+
+/// 라이브 프라임 완료 JS 통보 — tf.uiPrime() 로딩 오버레이 해제(데모 플래시 차폐).
+#[cfg(target_arch = "wasm32")]
+fn notify_prime() {
+    use wasm_bindgen::prelude::*;
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tf) = js_sys::Reflect::get(&window.into(), &"terrafolk".into()) else {
+        return;
+    };
+    let Ok(f) = js_sys::Reflect::get(&tf, &"uiPrime".into()) else {
+        return;
+    };
+    if let Ok(f) = f.dyn_into::<js_sys::Function>() {
+        let _ = f.call0(&tf);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn notify_prime() {}
 
 /// 서버 시간 → DayTime(로컬 진행 정지 — 서버가 정본) + 일출/일몰·날씨.
 pub fn sync_daynight(
@@ -112,6 +182,28 @@ pub fn sync_daynight(
     if let Some(w) = f.weather.as_deref() {
         weather.kind = w.to_string();
     }
+}
+
+/// 구조물 kind — 타일을 선점해 나무·장식이 같은 타일에 뚫고 서지 못하게 한다.
+fn structural_kind(kind: &str) -> bool {
+    matches!(kind, "hut" | "campfire" | "stash" | "grave" | "relic")
+}
+
+/// 구조물 청소 반경(타일, 체비셰프) — 주변까지 포함해 나무·덤불 스폰을 양보한다.
+/// 에셋이 늦게 로딩돼도(나무 GLB가 마지막에 뜸) 기본 뷰에서 집이 숲에 묻히지
+/// 않게 하는 클라이언트 투영. 구조물 집합의 3×3 확장 좌표를 반환.
+fn cleared_tiles(
+    structural: &std::collections::HashSet<(u16, u16)>,
+) -> std::collections::HashSet<(i32, i32)> {
+    let mut out = std::collections::HashSet::new();
+    for &(x, y) in structural {
+        for dy in -1..=1i32 {
+            for dx in -1..=1i32 {
+                out.insert((x as i32 + dx, y as i32 + dy));
+            }
+        }
+    }
+    out
 }
 
 /// 자원 stateJson 최소 파싱 — 동물 {alive}·건축 {stage}.
@@ -197,11 +289,14 @@ fn res_sig(r: &super::LiveResource, vis: bool) -> u64 {
 pub struct LiveResMeta(pub u64);
 
 /// 자원 동기화 — 신규 스폰 / 사라진 것·상태 변화(사망·건축 단계) 재스폰.
+#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 메시·재질은 스폰 직접 주입용
 pub fn sync_resources(
     mut commands: Commands,
     net: Res<NetState>,
     world: Res<WorldData>,
     assets: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut std_mats: ResMut<Assets<bevy::pbr::StandardMaterial>>,
     mut q_live: Query<(
         Entity,
         &LiveResourceTag,
@@ -209,6 +304,9 @@ pub fn sync_resources(
         Option<&crate::world::models::PropRoot>,
     )>,
     mut first_log: Local<u32>,
+    // 구조물 청소 집합 캐시 — (서명, 3×3 확장 좌표). 매 프레임 재구축(구조물×9
+    // 삽입+할당) 대신 자원 목록 서명이 바뀔 때만 다시 계산한다.
+    mut cleared_cache: Local<(u64, std::collections::HashSet<(i32, i32)>)>,
 ) {
     if net.status != NetStatus::Connected {
         return;
@@ -265,8 +363,33 @@ pub fn sync_resources(
         }
         info!("[net] 라이브 자원 실체 {total}개 (동물 {animals}·건물 {buildings})");
     }
+    // 구조물 청소 반경 집합(3×3) — 나무·덤불이 구조물을 뒤덮는 것 방지.
+    // 서버가 같은 타일·인접 타일에 나무와 오두막을 함께 두는 데이터에서도 건물이
+    // 이긴다. 나무 GLB가 가장 늦게 로딩되므로 기본 뷰의 집이 숲에 묻히지 않는다.
+    // 서명(구조물 좌표 폴드)이 바뀔 때만 확장 집합을 재계산 — 프레임당 할당 제거.
+    let sig = frame
+        .resources
+        .iter()
+        .filter(|r| structural_kind(&r.kind))
+        .fold(frame.resources.len() as u64, |a, r| {
+            a.rotate_left(5) ^ (r.x as u64).wrapping_mul(31) ^ (r.y as u64).wrapping_mul(97)
+        });
+    if cleared_cache.0 != sig {
+        let structural: std::collections::HashSet<(u16, u16)> = frame
+            .resources
+            .iter()
+            .filter(|r| structural_kind(&r.kind))
+            .map(|r| (r.x, r.y))
+            .collect();
+        cleared_cache.1 = cleared_tiles(&structural);
+        cleared_cache.0 = sig;
+    }
+    let cleared = &cleared_cache.1;
+    // 기존 실체 id 사전 — 신규 판정을 O(N×M) 순회 대신 해시 조회로.
+    let live_ids: std::collections::HashSet<u32> =
+        q_live.iter().map(|(_, t, _, _)| t.0).collect();
     for r in &frame.resources {
-        if q_live.iter().any(|(_, t, _, _)| t.0 == r.id) {
+        if live_ids.contains(&r.id) {
             continue;
         }
         let st: ResState = r
@@ -277,6 +400,17 @@ pub fn sync_resources(
         let Some((kind, target_h)) = live_visual(&r.kind, &r.species, &st) else {
             continue;
         };
+        if matches!(
+            kind,
+            PropKind::TreeBroadleaf
+                | PropKind::TreePine
+                | PropKind::TreePalm
+                | PropKind::TreeSapling
+                | PropKind::BerryBush
+        ) && cleared.contains(&(r.x as i32, r.y as i32))
+        {
+            continue; // 구조물 청소 반경 양보 — 지붕 뚫기·집 가림 방지
+        }
         let vis = true;
         let sig = res_sig(r, vis);
         if world.terrain_at(r.x as i32, r.y as i32) == "water" {
@@ -300,20 +434,42 @@ pub fn sync_resources(
             LiveResMeta(sig),
             Transform::from_translation(Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5)),
         ));
+        // 모닥불 — 발광 불꽃·라이트는 PropRoot와 별도 엔티티(데모 경로와 공통 헬퍼).
+        // 동일 동기화 태그+서명 부여로 제거·상태변화 시 모델과 함께 철거·재생성.
+        if kind == crate::world::data::PropKind::Campfire {
+            let (flame, glow) = crate::world::models::spawn_campfire_fire(
+                &mut commands,
+                &mut meshes,
+                &mut std_mats,
+                r.x as f32 + 0.5,
+                r.y as f32 + 0.5,
+                ground,
+            );
+            commands
+                .entity(flame)
+                .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+            commands
+                .entity(glow)
+                .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+        }
     }
 }
 
 /// 주민 동기화 — 신규 스폰 / 목적지·이동상태 갱신 / 사라진 것 제거.
+/// 1프레임 공백(재접속·드랍)은 AgentGrace 유예로 버티고, 유예 초과분만 철거.
+#[allow(clippy::type_complexity)] // Bevy 쿼리 타입 — 유예 필드까지 읽는 동기 루프
 pub fn sync_agents(
     mut commands: Commands,
     net: Res<NetState>,
     world: Res<WorldData>,
     assets: Res<AssetServer>,
+    time: Res<Time>,
     mut q_live: Query<(
         Entity,
         &LiveAgentTag,
         &Transform,
         &mut crate::world::villager::Villager,
+        Option<&mut AgentGrace>,
     )>,
 ) {
     if net.status != NetStatus::Connected {
@@ -322,13 +478,27 @@ pub fn sync_agents(
     let Some(frame) = net.frame.as_ref() else {
         return;
     };
+    const GRACE_SECS: f32 = 5.0;
 
     // 갱신·제거
-    for (e, tag, tr, mut v) in &mut q_live {
+    for (e, tag, tr, mut v, grace) in &mut q_live {
         let Some(a) = frame.agents.iter().find(|a| a.id == tag.0) else {
-            commands.entity(e).despawn();
+            match grace {
+                Some(mut g) => {
+                    g.0 += time.delta_secs();
+                    if g.0 >= GRACE_SECS {
+                        commands.entity(e).despawn();
+                    }
+                }
+                None => {
+                    commands.entity(e).insert(AgentGrace(time.delta_secs()));
+                }
+            }
             continue;
         };
+        if let Some(mut g) = grace {
+            g.0 = 0.0;
+        }
         let target = Vec3::new(
             a.x,
             world.height_at(a.x.floor() as i32, a.y.floor() as i32),
@@ -338,9 +508,11 @@ pub fn sync_agents(
         v.moving = tr.translation.distance(target) > 0.05;
     }
 
-    // 신규
+    // 신규 — 기존 id 사전 조회(O(1)), 프레임당 O(N×M) 순회 제거
+    let live_ids: std::collections::HashSet<&str> =
+        q_live.iter().map(|(_, t, _, _, _)| t.0.as_str()).collect();
     for a in &frame.agents {
-        if q_live.iter().any(|(_, t, _, _)| t.0 == a.id) {
+        if live_ids.contains(a.id.as_str()) {
             continue;
         }
         if a.kind != "bot" && a.kind != "user" {

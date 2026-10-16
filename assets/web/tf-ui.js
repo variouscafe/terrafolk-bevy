@@ -486,6 +486,110 @@
     );
   }
 
+  // ═══════════════ 주민 히어로 카드(맵 클릭 선택 시 좌하단 컨텍스트 패널) ═══════════════
+  // 상용 시뮬 관전 패턴 — 선택 즉시 신원·행동·욕구·소지를 한눈에, 주요 동작
+  // (카메라 재추적·대화·상세)은 원클릭. 초상은 LPC walk 시트(64px 프레임)를
+  // CSS steps로 애니메이션 — 데이터는 TF_LOOK 캐시가 재사용된다.
+  var heroPortraits = {};   // id → dataURL(charSheetUrl 완료 시점 갱신)
+  function heroPortrait(id) {
+    var a = S.live[id];
+    if (!a || !window.TF_LOOK) return null;
+    var look = null;
+    try { look = a.look ? JSON.parse(a.look) : null; } catch (e) { /* lookJson 파손 — 해시 초상 */ }
+    var uuid = (look && look.uuid) || id;
+    var sex = look && /f/i.test(String(look.sex || '')) ? 'female' : 'male';
+    var age = look && look.age != null ? Number(look.age) : 40;
+    window.TF_LOOK.charSheetUrl({ uuid: uuid, sex: sex, age: age })
+      .then(function (u) {
+        if (heroPortraits[id] !== u) {
+          heroPortraits[id] = u;
+          if (S.selected === id) schedule();
+        }
+      })
+      .catch(function () { /* 부품 PNG 로딩 실패 — 초상 없이 렌더 */ });
+    return heroPortraits[id] || null;
+  }
+
+  function heroNeedBar(pair, needs) {
+    var v = Number(needs != null && needs[pair[1]] != null ? needs[pair[1]] : 0);
+    var pct = Math.min(100, Math.max(0, v));
+    return '<div class="tf-hero-need" title="' + esc(t(pair[0])) + '">' +
+      '<span class="tf-hero-need-label">' + esc(t(pair[0])) + '</span>' +
+      '<div class="tf-bar tf-hero-bar"><div class="tf-bar-fill' + (v > 70 ? ' hot' : '') +
+        '" style="width:' + pct + '%"></div></div>' +
+      '<span class="tf-hero-need-val' + (v > 70 ? ' hot' : '') + '">' + Math.round(v) + '</span>' +
+    '</div>';
+  }
+
+  var heroCache = {};  // id → 마지막 스냅숏 — 재접속 공백에도 카드 유지(stale 표시)
+  var heroSelPrev = null;  // 직전 선택 id — 변경 시 옛 캐시·초상 정리
+  function heroHtml() {
+    var a = S.selected ? S.live[S.selected] : null;
+    var stale = false;
+    if (S.selected !== heroSelPrev) {
+      // 선택 해제·전환 — 프레임 공백 흡수 임무는 끝낸 스냅숏·초상 폐기
+      delete heroCache[heroSelPrev];
+      delete heroPortraits[heroSelPrev];
+      heroSelPrev = S.selected;
+    }
+    if (!a) {
+      a = heroCache[S.selected || ''];
+      if (!a) return '';
+      stale = true; // 프레임 공백 — Rust 유예(5s) 안이면 곧 돌아온다
+    } else {
+      heroCache[a.id] = a;
+    }
+    // 선택이 바뀌면 오래된 캐시 정리
+    if (a && a.id !== S.selected) return '';
+    var act = a.actType || a.status || '';
+    var portrait = heroPortrait(a.id);
+    var needs = [['needs.hunger', 'hunger'], ['needs.thirst', 'thirst'],
+      ['needs.fatigue', 'fatigue'], ['needs.warmth', 'warmth']]
+      .map(function (p) { return heroNeedBar(p, a.needs); }).join('');
+    var invKeys = Object.keys(a.inv || {}).filter(function (k) { return (a.inv[k] || 0) > 0; });
+    var inv = invKeys.slice(0, 4).map(function (item) {
+      return '<span class="tf-chipbox" title="' + esc(tOr('item.' + item, item)) + '">' +
+        chipIconHtml(item) + '<span class="tf-qty">×' + a.inv[item] + '</span></span>';
+    }).join('');
+    if (invKeys.length > 4) inv += '<span class="tf-chipbox more">+' + (invKeys.length - 4) + '</span>';
+    var badge = a.mine
+      ? '<span class="tf-hero-badge mine">' + esc(t('mine.badge')) + '</span>'
+      : (a.kind === 'bot'
+        ? '<span class="tf-hero-badge bot">' + esc(tOr('hero.badge.bot', '봇')) + '</span>'
+        : '');
+    return '<aside class="tf-hero' + (stale ? ' stale' : '') + '" role="region" aria-label="' + esc(tOr('hero.card', '주민 카드')) + '">' +
+      '<div class="tf-hero-frame">' +
+        '<div class="tf-hero-ground"></div>' +
+        (portrait
+          ? '<div class="tf-hero-sprite" style="background-image:url(' + portrait + ')"></div>'
+          : '<div class="tf-hero-sprite empty">' + svg(ICONS.User, 28) + '</div>') +
+      '</div>' +
+      '<div class="tf-hero-main">' +
+        '<header class="tf-hero-head">' +
+          '<span class="tf-hero-name" style="color:' + I.agentColor(a.id) + '">' + esc(a.name) + '</span>' +
+          badge +
+          '<button class="tf-hero-x" data-act="hero-close" title="' + esc(t('btn.close')) + '" aria-label="' + esc(t('btn.close')) + '">' + svg(ICONS.X, 14) + '</button>' +
+        '</header>' +
+        '<div class="tf-hero-act">' +
+          (act ? '<span class="tf-hero-act-kind">' + esc(tOr('act.' + act, act)) + '</span>' : '') +
+          (a.goalText ? '<span class="tf-hero-goal">' + esc(mt(a.goalText)) + '</span>' : '') +
+        '</div>' +
+        '<div class="tf-hero-needs">' + needs + '</div>' +
+        '<div class="tf-hero-inv' + (inv ? '' : ' empty') + '">' +
+          (inv || '<span class="tf-empty">' + esc(t('panel.inventory.empty')) + '</span>') +
+        '</div>' +
+        '<div class="tf-hero-btns">' +
+          '<button class="tf-hero-btn" data-act="hero-cam" title="' + esc(tOr('hero.cam.hint', '카메라가 이 주민을 따라갑니다')) + '">' +
+            svg(ICONS.MapPin, 14) + '<span>' + esc(tOr('hero.cam', '카메라')) + '</span></button>' +
+          '<button class="tf-hero-btn" data-act="hero-chat">' +
+            svg(ICONS.Users, 14) + '<span>' + esc(tOr('hero.chat', '대화')) + '</span></button>' +
+          '<button class="tf-hero-btn" data-act="hero-detail">' +
+            svg(ICONS.ScrollText, 14) + '<span>' + esc(tOr('hero.detail', '상세')) + '</span></button>' +
+        '</div>' +
+      '</div>' +
+    '</aside>';
+  }
+
   // ── 자원 팝업(FE popups res 포트) ──
   function resHtml() {
     var relic = '';
@@ -1014,7 +1118,7 @@
     var root = ensureRoot();
     var saved = collectScrolls(root);
     var focus = document.activeElement && document.activeElement.id;
-    root.innerHTML = topbarHtml() + popupHtml() + (S.creditsOpen ? creditsHtml() : '') + (S.lookEdit ? lookHtml() : '');
+    root.innerHTML = topbarHtml() + heroHtml() + popupHtml() + (S.creditsOpen ? creditsHtml() : '') + (S.lookEdit ? lookHtml() : '');
     applyScrolls(root, saved);
     if (focus) {
       var el = document.getElementById(focus);
@@ -1057,6 +1161,24 @@
     if (act === 'menu') { S.menuOpen = !S.menuOpen; schedule(); }
     else if (act === 'popup') { openPopup(key); }
     else if (act === 'clear-notice') { S.notice = ''; schedule(); }
+    else if (act === 'hero-close') {
+      // 선택 해제 — 단일 소스(Rust Selection)에 빈 요청 → 링·추적·채팅 독 함께 정리
+      if (window.terrafolk && window.terrafolk.selectAgent) window.terrafolk.selectAgent('');
+    }
+    else if (act === 'hero-cam') {
+      // 재추적 — 같은 id 재선택도 epoch로 구분돼 카메라가 다시 따라온다(pick.rs)
+      if (S.selected && window.terrafolk && window.terrafolk.selectAgent) {
+        window.terrafolk.selectAgent(S.selected);
+      }
+    }
+    else if (act === 'hero-chat') {
+      // 대화 — ui.js 채팅 로그 펼치고 입력에 포커스
+      var head = document.querySelector('.tf-chathead');
+      if (head && !head.classList.contains('on')) head.click();
+      var inp = document.querySelector('.tf-chatdock .tf-input');
+      if (inp) inp.focus();
+    }
+    else if (act === 'hero-detail') { openPopup('chars'); }
     else if (act === 'close-popup') {
       if (ev.target === el) { S.popup = null; schedule(); }   // 백드롭·X만 — 내부 클릭 전파 무시
     }
@@ -1122,12 +1244,13 @@
     else schedule();
   }, true);
 
+  var modalEscLatch = false;
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape') {
-      if (S.lookEdit) { S.lookEdit = null; schedule(); }
-      else if (S.creditsOpen) { S.creditsOpen = false; schedule(); }
-      else if (S.popup) { S.popup = null; schedule(); }
-      else if (S.menuOpen) { S.menuOpen = false; schedule(); }
+      if (S.lookEdit) { S.lookEdit = null; modalEscLatch = true; schedule(); }
+      else if (S.creditsOpen) { S.creditsOpen = false; modalEscLatch = true; schedule(); }
+      else if (S.popup) { S.popup = null; modalEscLatch = true; schedule(); }
+      else if (S.menuOpen) { S.menuOpen = false; modalEscLatch = true; schedule(); }
     }
   });
 
@@ -1343,6 +1466,10 @@
         needs: a.needs || (cur ? cur.needs : {}),
         inv: a.inventory != null ? I.parseInv(a.inventory) : (cur ? cur.inv : {}),
         goalText: a.goalText != null ? a.goalText : (cur ? cur.goalText : ''),
+        look: a.look != null ? a.look : (cur ? cur.look : null),
+        kind: a.kind != null ? a.kind : (cur ? cur.kind : ''),
+        x: a.x != null ? a.x : (cur ? cur.x : 0),
+        y: a.y != null ? a.y : (cur ? cur.y : 0),
         mine: cur ? cur.mine : false,
       };
     });
@@ -1372,10 +1499,9 @@
       S.liveSig = sig;
       loadMine();
     }
-    if (S.selected && !S.live[S.selected]) {
-      S.selected = null;
-      if (selTimer) { clearInterval(selTimer); selTimer = null; }
-    }
+    // 선택 해제는 Rust 단일 소스(tf.onPickAgent(null))에 맡긴다 — 프레임 공백
+    // (재접속·드랍)으로 S.live가 잠깐 비어도 카드·추적이 튕기지 않는다.
+    // Rust는 AgentGrace 유예 후 실제 철거 시에만 null을 통보한다.
     schedule();
   }
   function liveSignature() {
@@ -1438,6 +1564,18 @@
   })();
 
   // ═══════════════ 공개 API ═══════════════
+  // modalEsc — 이번 Escape로 DOM 모달을 닫았는지 읽고 지운다(Rust pick.rs).
+  // 같은 키 입력에서 JS가 먼저 모달을 닫으므로 프레임 시점의 uiModal 읽기로는
+  // 판별 불가 — 래치로 1회 소진 계약.
+  var tfb = window.terrafolk;
+  if (tfb) tfb.modalEsc = function () { var v = modalEscLatch; modalEscLatch = false; return v; };
+
+  // 라이브 프라임 로딩 캡션(index.html 정적 폴백 텍스트)을 사전 언어로 교체 —
+  // 키(boot.loading)는 ../terrafolk 정본 사전 등록 후 갱신된다(tOr 폴백 유지).
+  document.addEventListener('DOMContentLoaded', function () {
+    var cap = document.querySelector('.tf-boot-caption');
+    if (cap) cap.textContent = tOr('boot.loading', '세계에 접속하는 중…');
+  });
   window.TF_UI = {
     state: S,
     feed: {

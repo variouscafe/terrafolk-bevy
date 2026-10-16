@@ -2,6 +2,8 @@
 
 스스로 생각하고 살아가는 AI 주민들의 원시 세계 시뮬레이션 게임 Terrafolk의 Rust/Bevy 클라이언트.
 
+**북극성 — "AI 캐릭터가 주도하는 시뮬레이션 게임 1위"**: 이 클라이언트의 모든 작업(그래픽·UX·성능)은 AI 주민의 생명감과 관전 몰입을 최우선으로 판단한다. 프로토타입 문구·임시 룩은 정식 제품 기준으로 다듬는다(예: 페이지 타이틀 "A Living World of AI Villagers").
+
 ## 역할 분담
 
 - **이 repo = client 담당**: Bevy 웹 클라이언트 — **웹버전 배포를 타겟**으로 개발한다 (배포 https://terrafolk-rust.pages.dev).

@@ -11,8 +11,8 @@
 @group(#{MATERIAL_BIND_GROUP}) @binding(3) var<uniform> wave_scale: vec4<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(4) var t_shore: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(5) var s_shore: sampler;
+@group(#{MATERIAL_BIND_GROUP}) @binding(6) var<uniform> world_size: vec4<f32>;
 
-const WORLD: f32 = 56.0;
 const MAX_SHORE: f32 = 14.0;
 
 fn hash(p: vec2<f32>) -> f32 {
@@ -45,9 +45,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var col = mix(shallow.rgb, deep.rgb, clamp(n * 0.7 + fres * 0.4, 0.0, 1.0));
 
     // ── 해안 포말 — 베이크 거리장 + 노이즈 요동으로 유기적 물결선
-    let sd = textureSample(t_shore, s_shore, wp / WORLD).r * MAX_SHORE;
+    let sd = textureSample(t_shore, s_shore, wp / world_size.x).r * MAX_SHORE;
     let wob = (vnoise(wp * 1.1 + vec2<f32>(t * 0.22, -t * 0.17)) - 0.5) * 1.1;
-    let band = 0.55 + wob;
+    let band = 0.75 + wob;
     let foam_edge = 1.0 - smoothstep(band - 0.35, band + 0.55, sd);
     // 포말 텍스처 — 미세 거품 얼룩
     let foam_tex = vnoise(wp * 3.0 + vec2<f32>(t * 0.35, t * 0.2)) * 0.7

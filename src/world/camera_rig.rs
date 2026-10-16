@@ -1,8 +1,10 @@
-//! 카메라 리그 — 45° 고정 절대각(아이소 순수성) + 저 FOV.
-//! 줌: 휠·트랙패드 핀치 제스처·모바일 두 손가락·키보드(+/-) — 줌투커서 지원.
-//! 팬: 광선 그랩(camera_input — 1:1 추적) + WASD/화살표 + 관성.
-//! 줌·팬 모두 목표값 누적 → 지수 스무딩(전후 0.3~4.2배).
+//! 카메라 리그 — 정사영(Orthographic) 고정 절대각 아이소 뷰.
+//! 참조 스타일(코지 페인티드 3/4): 요 45°·피치 35°, 세계 수직 고정.
+//! 줌: 투영 scale(작을수록 확대) — 휠·트랙패드 핀치·모바일 두 손가락·키보드(+/-),
+//! 줌투커서는 정사영 축척비 공식(앵커 세계점의 뷰센터 오프셋 × 줌비)으로 보정.
+//! 팬: 광선 그랩(camera_input — 1:1 추적, 정사영 평행광선에도 동일) + WASD + 관성.
 
+use bevy::camera::ScalingMode;
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::AccumulatedMouseScroll;
 use bevy::prelude::*;
@@ -10,13 +12,20 @@ use bevy::prelude::*;
 use super::camera_input::{PointerInput, ground_at};
 use super::data::WorldData;
 
-/// 줌 범위 — 거리 = 15×zoom(최대 줌인 4.5m ↔ 최대 줌아웃 63m 고도)
+/// 줌 범위 — scale = VIEW_H × zoom(최대 줌인 ≈9m 시야 ↔ 최대 줌아웃 ≈126m 시야)
 pub const ZOOM_MIN: f32 = 0.3;
 pub const ZOOM_MAX: f32 = 4.2;
 /// 스무딩 계수(초당 수렴 속도)
 const ZOOM_SMOOTH: f32 = 9.0;
-/// 카메라 고도 계수(pan_offset과 정합)
-const CAM_DIST: f32 = 15.0;
+/// 정사영 기본 시야 높이(월드 단위) — 줌 1에서 세로로 보이는 폭.
+/// 참조 구도(마을 스케일 — 코티지 4.2m가 화면 세로의 ~20%).
+const VIEW_H: f32 = 22.0;
+/// 카메라 거리(정사영은 크기 무관 — near/far 클리핑·그림자 프러스텀용).
+/// ⚠ terrain_splat.wgsl의 안개 축 상수(140.0·뷰방향)와 정합 — 변경 시 양쪽 수정.
+const CAM_DIST: f32 = 140.0;
+/// 부저각 — 요(대각)·피치(내려다봄). 참조 이미지 3/4 뷰.
+const CAM_YAW_DEG: f32 = 45.0;
+const CAM_PITCH_DEG: f32 = 35.0;
 
 /// 휠 줌 — 한 스텝(노치)당 배율 기수(1.65^Δ)·Δ 게인
 const WHEEL_ZOOM_BASE: f32 = 1.65;
@@ -48,22 +57,34 @@ impl Default for CameraRig {
     }
 }
 
-pub fn spawn_camera(mut commands: Commands) {
-    commands.spawn((
-        Camera3d::default(),
-        Projection::Perspective(PerspectiveProjection {
-            fov: 32_f32.to_radians(),
-            near: 0.5,
-            far: 320.0,
-            ..default()
-        }),
-        Transform::from_translation(pan_offset(CameraRig::default().zoom, &CameraRig::default())),
-    ));
+/// 정사영 투영 — 세로 고정(FixedVertical), scale=zoom으로 줌.
+fn ortho_projection() -> Projection {
+    Projection::Orthographic(OrthographicProjection {
+        near: 1.0,
+        far: 400.0,
+        scaling_mode: ScalingMode::FixedVertical {
+            viewport_height: VIEW_H,
+        },
+        ..OrthographicProjection::default_3d()
+    })
 }
 
-fn pan_offset(zoom: f32, rig: &CameraRig) -> Vec3 {
-    let d = CAM_DIST * zoom;
-    Vec3::new(rig.target.x, d, rig.target.y + d)
+/// 뷰 방향 반대편 오프셋 — 요·피치 구면(정사영이라 거리는 클리핑용 상수).
+fn view_offset() -> Vec3 {
+    let (p, y) = (CAM_PITCH_DEG.to_radians(), CAM_YAW_DEG.to_radians());
+    let horiz = CAM_DIST * p.cos();
+    Vec3::new(horiz * y.cos(), CAM_DIST * p.sin(), horiz * y.sin())
+}
+
+fn pan_offset(rig: &CameraRig) -> Vec3 {
+    Vec3::new(rig.target.x, 0.0, rig.target.y) + view_offset()
+}
+
+pub fn spawn_camera(mut commands: Commands) {
+    let rig = CameraRig::default();
+    let mut tr = Transform::from_translation(pan_offset(&rig));
+    tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
+    commands.spawn((Camera3d::default(), ortho_projection(), tr));
 }
 
 /// 회전은 항상 동일(부저각 고정) — 위치만 옮긴 가상 카메라 변환.
@@ -84,9 +105,9 @@ pub fn camera_control(
     mut rig: ResMut<CameraRig>,
     mut input: ResMut<PointerInput>,
     world: Res<WorldData>,
-    mut q: Query<(&Camera, &GlobalTransform, &mut Transform), With<Camera3d>>,
+    mut q: Query<(&Camera, &GlobalTransform, &mut Transform, &mut Projection), With<Camera3d>>,
 ) {
-    let Ok((camera, gt, mut tr)) = q.single_mut() else {
+    let Ok((camera, gt, mut tr, mut proj)) = q.single_mut() else {
         return;
     };
     let dt = time.delta_secs().max(1e-4);
@@ -132,7 +153,7 @@ pub fn camera_control(
 
     // ── 4) 이번 프레임 적용될 카메라(줌 반영·팬 적용 전) — 그랩 광선 기준.
     //    그랩 팬 델타는 카메라 평행이동 불변이므로 팬 전 좌표로 계산해도 정확하다.
-    let gt_next = camera_at(gt, pan_offset(rig.zoom, &rig));
+    let gt_next = camera_at(gt, pan_offset(&rig));
 
     // ── 5) 그랩 팬(마우스·한 손가락·핀치 중심) + 관성
     let frame = input.apply_pans(camera, &gt_next, &world, &mouse, &touches, cursor, dt);
@@ -157,20 +178,20 @@ pub fn camera_control(
         rig.target += dir.normalize() * sp;
     }
 
-    // ── 7) 줌투커서 — 능동 제스처가 없을 때만. 커서 아래 세계점을 줌 전후로
-    //    고정(줌만 바뀐 카메라 쌍으로 비교해 팬 영향과 분리). 스무딩 수렴까지
-    //    매 프레임 유지해 애니메이션 중에도 앵커가 흔들리지 않는다.
+    // ── 7) 줌투커서(정사영) — 능동 제스처가 없을 때만.
+    //    정사영은 화면 오프셋 ∝ (세계점−뷰중심)/scale 이므로, 앵커 a₀를 커서 아래
+    //    유지하려면 target += (a₀−target)·(1−zoom/zoom_prev). 앵커 아래 지형
+    //    고도(2단 계산)로 잡아 언덕 위에서도 정확하다.
     if zoom_moved && !frame.gesture_active {
         if let Some(px) = input.zoom_anchor {
-            // 앵커 기준면 — 앵커 아래 지형 고도(2단 계산)로 잡아 언덕 위에서도 정확
             let anchor = ground_at(camera, gt, px, 0.0).and_then(|g| {
                 let h = world.height_at(g.x.round() as i32, g.z.round() as i32);
                 ground_at(camera, gt, px, h).or(Some(g))
             });
-            if let Some(a0) = anchor
-                && let Some(a1) = ground_at(camera, &gt_next, px, a0.y)
-            {
-                rig.target += Vec2::new(a0.x - a1.x, a0.z - a1.z);
+            if let Some(a0) = anchor {
+                let ratio = 1.0 - rig.zoom / zoom_prev.max(1e-4);
+                let target = rig.target;
+                rig.target += (Vec2::new(a0.x, a0.z) - target) * ratio;
             }
         }
     } else if !zoom_moved {
@@ -185,7 +206,10 @@ pub fn camera_control(
         input.stop_inertia();
     }
 
-    // ── 9) 적용
-    tr.translation = pan_offset(rig.zoom, &rig);
+    // ── 9) 적용 — 위치·방향·정사영 scale
+    tr.translation = pan_offset(&rig);
     tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
+    if let Projection::Orthographic(o) = &mut *proj {
+        o.scale = rig.zoom;
+    }
 }

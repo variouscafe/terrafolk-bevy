@@ -69,6 +69,18 @@ fn fragment(
             + w2.x * textureSample(t_rock, s_rock, uv).rgb
             + w2.y * textureSample(t_dirt, s_dirt, uv).rgb;
 
+    // ── 경사 절벽 — 급경사(노멀.y 낮음)에 암석+흙 줄무늬 혼합·살짝 어둡게(AO감).
+    //    유니폼 없이 상수 임계(WebGL2 12유니폼 한도 준수).
+    let nrm = normalize(in.world_normal);
+    let slope = smoothstep(0.90, 0.62, nrm.y); // 0=평지, 1=가파름
+    if slope > 0.001 {
+        let rock_c = textureSample(t_rock, s_rock, uv).rgb;
+        let dirt_c = textureSample(t_dirt, s_dirt, uv).rgb;
+        col = mix(col, rock_c, slope * 0.88);
+        col = mix(col, dirt_c, slope * slope * 0.30);
+        col *= 1.0 - slope * 0.10;
+    }
+
     // 거시 변조 — 세계좌표 노이즈로 온도/명도 미세 왕복(붓 화법 패치 느낌)
     let macro1 = vnoise(in.world_position.xz * 0.16);
     let macro2 = vnoise(in.world_position.xz * 0.045 + vec2<f32>(37.2, 11.8));
@@ -86,10 +98,13 @@ fn fragment(
     out.color = apply_pbr_lighting(pbr_input);
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
     // 수동 원근 안개 — 카메라 DistanceFog는 WebGL2 유니폼 한도로 불가.
-    // 공기 원근: 먼 픽셀을 하늘톤으로(밤엔 어둡게 — 노이즈 색을 이용한 근사)
-    let dist = distance(view.world_position, in.world_position.xyz);
-    let fog_f = smoothstep(48.0, 130.0, dist);
-    let fog_col = vec3<f32>(0.60, 0.72, 0.85);
+    // 정사영 리그는 거리가 고정(camera_rig CAM_DIST=140)이라 절대거리로 쓰면 전면이
+    // 안개에 묻힌다. 뷰축거리−카메라거리(=타깃에서의 이격)로 공기 원근을 건다.
+    // VIEW_DIR/140은 camera_rig.rs의 CAM_PITCH 35°·CAM_YAW 45°·CAM_DIST와 정합.
+    let view_dir = vec3<f32>(-0.5792, -0.5736, -0.5792);
+    let axis = dot(in.world_position.xyz - view.world_position, view_dir) - 140.0;
+    let fog_f = smoothstep(42.0, 125.0, axis);
+    let fog_col = vec3<f32>(0.72, 0.81, 0.92);
     out.color = vec4<f32>(mix(out.color.rgb, fog_col, fog_f * 0.75), out.color.a);
 #endif
 

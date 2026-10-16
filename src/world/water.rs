@@ -27,6 +27,9 @@ pub struct WaterMaterial {
     #[texture(4)]
     #[sampler(5)]
     pub shore: Handle<Image>,
+    /// x=월드 크기(포말 UV 정규화 — 데모 56·라이브 가변)
+    #[uniform(6)]
+    pub world_size: Vec4,
 }
 
 impl Material for WaterMaterial {
@@ -40,6 +43,10 @@ impl Material for WaterMaterial {
 
 /// 해안거리 정규화 스케일(타일)
 pub const MAX_SHORE_DIST: f32 = 14.0;
+
+/// 해양 평면 확장 배수 — 섬이 바다 한복판에 떠 있는 구도(지평선까지).
+/// 확장 영역은 shore UV가 [0,1] 밖으로 나가므로 샘플러 ClampToEdge 필수.
+const OCEAN_EXTEND: f32 = 3.0;
 
 /// 다중 출발점 BFS — 각 물 셀에서 가장 가까운 육지까지의 타일 거리.
 fn shore_distance_grid(world: &WorldData) -> Vec<u8> {
@@ -119,9 +126,10 @@ fn build_water(
     images: &mut Assets<Image>,
 ) -> (Mesh3d, MeshMaterial3d<WaterMaterial>) {
     let size = world.size as f32;
-    // 해안거리 베이크 — 셀 중심 정렬(샘플 uv = world/size)
+    // 해안거리 베이크 — 셀 중심 정렬(샘플 uv = world/size).
+    // 샘플러 ClampToEdge — 해양 확장 영역(uv>1)이 가장자리 값(원해)으로 이어진다.
     let data = shore_distance_grid(world);
-    let shore = images.add(Image::new(
+    let mut shore_img = Image::new(
         Extent3d {
             width: world.size as u32,
             height: world.size as u32,
@@ -131,19 +139,28 @@ fn build_water(
         data,
         TextureFormat::R8Unorm,
         RenderAssetUsages::default(),
-    ));
+    );
+    shore_img.sampler =
+        bevy::image::ImageSampler::Descriptor(bevy::image::ImageSamplerDescriptor {
+            address_mode_u: bevy::image::ImageAddressMode::ClampToEdge,
+            address_mode_v: bevy::image::ImageAddressMode::ClampToEdge,
+            ..default()
+        });
+    let shore = images.add(shore_img);
     let mesh = Mesh::from(bevy::math::primitives::Plane3d::new(
         Vec3::Y,
-        Vec2::splat(size / 2.0),
+        Vec2::splat(size * OCEAN_EXTEND / 2.0),
     ));
     (
         Mesh3d(meshes.add(mesh)),
         MeshMaterial3d(materials.add(WaterMaterial {
-            deep: Vec4::new(0.21, 0.35, 0.55, 0.82),
-            shallow: Vec4::new(0.42, 0.62, 0.75, 0.82),
+            // 청록-하늘색 파레트(참조) — 커스텀 재질이라 값은 sRGB 감각(셰이더 그대로 출력)
+            deep: Vec4::new(0.16, 0.50, 0.66, 0.80),
+            shallow: Vec4::new(0.38, 0.76, 0.80, 0.80),
             scroll_speed: Vec4::new(0.06, 0.0, 0.0, 0.0),
             wave_scale: Vec4::new(3.2, 0.0, 0.0, 0.0),
             shore,
+            world_size: Vec4::new(size, 0.0, 0.0, 0.0),
         })),
     )
 }

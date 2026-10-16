@@ -123,29 +123,29 @@ def finalize(im, name, out_dir):
 
 # ── 레이어 레시피 ──────────────────────────────────────────────
 def gen_grass(out):
-    # 잎새 그린 램프: 어두운 올리브→밝은 옐로그린
-    colors = [hex2rgb('#4E7A28'), hex2rgb('#5F9130'), hex2rgb('#79AC3C'), hex2rgb('#8FBE4C')]
+    # 잎새 그린 램프: 라임 그린→밝은 옐로그린(참조 #90A030~#B0B040)
+    colors = [hex2rgb('#7FA83E'), hex2rgb('#93BC4A'), hex2rgb('#A8D058'), hex2rgb('#BCE468')]
     noise = wrap_value_noise(101, 5, (1.0, 0.45, 0.22))
     im = paint_base(SIZE, 101, colors, None, noise, sx=1.0, sy=1.0)
     # 세로 잎 스트로크(위에서 본 풀판 느낌의 짧은 대시, 방향 약간 흐트림)
-    im = dab_strokes(im, 7, [lambda t: mix(hex2rgb('#578A2C'), hex2rgb('#8CC452'), t)], 900, (7, 16), 2, 78, 38)
-    im = dab_strokes(im, 8, [lambda t: mix(hex2rgb('#45702299'[:7]), hex2rgb('#619332'), t)], 420, (6, 13), 2, 80, 40)
-    im = speckles(im, 9, [lambda t: mix(hex2rgb('#A8D06A'), hex2rgb('#C9E396'), t)], 140, 1, 2, 0.3)
+    im = dab_strokes(im, 7, [lambda t: mix(hex2rgb('#8BB448'), hex2rgb('#B2D862'), t)], 900, (7, 16), 2, 78, 38)
+    im = dab_strokes(im, 8, [lambda t: mix(hex2rgb('#71963A'), hex2rgb('#93BC4C'), t)], 420, (6, 13), 2, 80, 40)
+    im = speckles(im, 9, [lambda t: mix(hex2rgb('#D2EC90'), hex2rgb('#E8F8B4'), t)], 150, 1, 2, 0.3)
     return finalize(im, 'grass', out)
 
 def gen_forest(out):
-    # 어두운 숲바닥 + 낙엽 litter
-    colors = [hex2rgb('#3E5E22'), hex2rgb('#4C7028'), hex2rgb('#5D8232'), hex2rgb('#6E9440')]
+    # 숲바닥 — 밝은 중간록 + 낙엽 litter(참조 숲 그린 #607030)
+    colors = [hex2rgb('#4E7A2E'), hex2rgb('#5C8C38'), hex2rgb('#6CA044'), hex2rgb('#7EB654')]
     noise = wrap_value_noise(202, 4, (1.0, 0.4))
     im = paint_base(SIZE, 202, colors, None, noise)
     # 낙엽 대시 — 갈색/올리브 angled
     im = dab_strokes(im, 21, [lambda t: mix(hex2rgb('#7A5A34'), hex2rgb('#9C7644'), t)], 520, (8, 18), 3, 30, 60)
-    im = dab_strokes(im, 22, [lambda t: mix(hex2rgb('#54642B'), hex2rgb('#77904A98'[:7]), t)], 380, (9, 20), 3, 55, 70)
-    im = speckles(im, 23, [lambda t: mix(hex2rgb('#2F4A1B'), hex2rgb('#44601F'), t)], 260, 1, 3, 0.4)
+    im = dab_strokes(im, 22, [lambda t: mix(hex2rgb('#5E7632'), hex2rgb('#82A050'), t)], 380, (9, 20), 3, 55, 70)
+    im = speckles(im, 23, [lambda t: mix(hex2rgb('#3A5A24'), hex2rgb('#4E7028'), t)], 260, 1, 3, 0.4)
     return finalize(im, 'forest', out)
 
 def gen_sand(out):
-    colors = [hex2rgb('#C9AE7C'), hex2rgb('#D9BE8C'), hex2rgb('#E6CC9C'), hex2rgb('#F0DCAE')]
+    colors = [hex2rgb('#D2B98A'), hex2rgb('#E0C99C'), hex2rgb('#EAD7AC'), hex2rgb('#F4E5BE')]
     noise = wrap_value_noise(303, 4, (1.0, 0.5, 0.25))
     im = paint_base(SIZE, 303, colors, None, noise, sx=1.0, sy=0.45)  # 세로 늘어진 램프=물결
     # 잔물결 띠 — 왜곡 사인
@@ -168,7 +168,8 @@ def gen_sand(out):
     return finalize(im, 'sand', out)
 
 def gen_rock(out):
-    colors = [hex2rgb('#6F7069'), hex2rgb('#83847B'), hex2rgb('#96978D'), hex2rgb('#A8A99E')]
+    # 따뜻한 회색 절벽(참조 #A8A096)
+    colors = [hex2rgb('#8A857C'), hex2rgb('#9A948A'), hex2rgb('#A9A397'), hex2rgb('#B9B3A6')]
     noise = wrap_value_noise(404, 3, (1.0, 0.5))
     im = paint_base(SIZE, 404, colors, None, noise)
     # 균열 — 랜덤 워크 라인(어두운)
@@ -185,26 +186,26 @@ def gen_rock(out):
         w = rng.randint(2, 3)
         for ox in (-SIZE, 0, SIZE):
             for oy in (-SIZE, 0, SIZE):
-                dr.line([(px + ox, py + oy) for px, py in pts], fill=(82, 83, 76, 150), width=w)
+                dr.line([(px + ox, py + oy) for px, py in pts], fill=(96, 90, 82, 150), width=w)
     im = im.filter(ImageFilter.GaussianBlur(0.7))
     # 이끼 얼룩(녹색 미세)
-    im = speckles(im, 42, [lambda t: mix(hex2rgb('#6E8449'), hex2rgb('#83985C'), t)], 130, 2, 5, 2.2)
+    im = speckles(im, 42, [lambda t: mix(hex2rgb('#7E9455'), hex2rgb('#93A868'), t)], 130, 2, 5, 2.2)
     # 하이라이트
-    im = speckles(im, 43, [lambda t: mix(hex2rgb('#B9BAB0'), hex2rgb('#CFCFC5'), t)], 110, 2, 6, 2.4)
+    im = speckles(im, 43, [lambda t: mix(hex2rgb('#C6C0B2'), hex2rgb('#D8D3C6'), t)], 110, 2, 6, 2.4)
     return finalize(im, 'rock', out)
 
 def gen_dirt(out):
-    # bark(#955D46) 계열 흙
-    colors = [hex2rgb('#6E4F35'), hex2rgb('#7F5C3E'), hex2rgb('#91684697'[:7]), hex2rgb('#9C7450')]
+    # 크림베이지 흙길(참조 패스 #C9A876) — 밝은 황토
+    colors = [hex2rgb('#A57C50'), hex2rgb('#B98F62'), hex2rgb('#CBA878'), hex2rgb('#D8BA8C')]
     noise = wrap_value_noise(505, 4, (1.0, 0.5, 0.25))
     im = paint_base(SIZE, 505, colors, None, noise)
     # 흙 덩이 블롭
-    im = speckles(im, 51, [lambda t: mix(hex2rgb('#5C4029'), hex2rgb('#7B5A3B'), t)], 200, 3, 8, 2.0)
-    im = speckles(im, 52, [lambda t: mix(hex2rgb('#A87F58'), hex2rgb('#B89068'), t)], 160, 2, 6, 1.8)
+    im = speckles(im, 51, [lambda t: mix(hex2rgb('#8A6B47'), hex2rgb('#A3835C'), t)], 200, 3, 8, 2.0)
+    im = speckles(im, 52, [lambda t: mix(hex2rgb('#C7A87D'), hex2rgb('#D6B98E'), t)], 160, 2, 6, 1.8)
     # 작은 돌
-    im = speckles(im, 53, [lambda t: mix(hex2rgb('#8B8C82'), hex2rgb('#9FA095'), t)], 110, 2, 4, 0.5)
+    im = speckles(im, 53, [lambda t: mix(hex2rgb('#A5A096'), hex2rgb('#B8B4A9'), t)], 110, 2, 4, 0.5)
     # 근경 스트로크
-    im = dab_strokes(im, 54, [lambda t: mix(hex2rgb('#7C5B3D'), hex2rgb('#95704B'), t)], 340, (8, 18), 2, 20, 80)
+    im = dab_strokes(im, 54, [lambda t: mix(hex2rgb('#A5835C'), hex2rgb('#BD9B70'), t)], 340, (8, 18), 2, 20, 80)
     return finalize(im, 'dirt', out)
 
 if __name__ == '__main__':

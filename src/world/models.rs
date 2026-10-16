@@ -23,7 +23,7 @@ impl PropKind {
         match self {
             PropKind::TreeBroadleaf => ModelSpec {
                 path: "models/MapleTrees.glb",
-                target_h: 5.6,
+                target_h: 7.2,
                 variants: &[
                     "MapleTree_1",
                     "MapleTree_2",
@@ -34,7 +34,7 @@ impl PropKind {
             },
             PropKind::TreePine => ModelSpec {
                 path: "models/PineTrees.glb",
-                target_h: 6.4,
+                target_h: 8.0,
                 variants: &[
                     "PineTree_1",
                     "PineTree_2",
@@ -45,7 +45,7 @@ impl PropKind {
             },
             PropKind::TreePalm => ModelSpec {
                 path: "models/PalmTrees.glb",
-                target_h: 4.8,
+                target_h: 6.2,
                 variants: &[
                     "PalmTree_1",
                     "PalmTree_2",
@@ -61,7 +61,7 @@ impl PropKind {
             },
             PropKind::TreeDead => ModelSpec {
                 path: "models/DeadTrees.glb",
-                target_h: 5.2,
+                target_h: 6.4,
                 variants: &["DeadTree_8", "DeadTree_9", "DeadTree_10"],
             },
             PropKind::BerryBush => ModelSpec {
@@ -96,13 +96,14 @@ impl PropKind {
                 variants: &["Grass_Large_Extruded", "Grass_Small"],
             },
             PropKind::Hut => ModelSpec {
-                path: "models/Hut.glb",
-                target_h: 3.4,
-                variants: &[],
+                // 코티지 3변형(테라코타·청색·주황 지붕) — fetch_village_glbs.py 산출
+                path: "models/CottageHouses.glb",
+                target_h: 4.2,
+                variants: &["House_1", "House_2", "House_4"],
             },
             PropKind::StorageHut => ModelSpec {
-                path: "models/StorageHut.glb",
-                target_h: 2.7,
+                path: "models/Barn.glb",
+                target_h: 3.4,
                 variants: &[],
             },
             PropKind::Tent => ModelSpec {
@@ -212,48 +213,67 @@ fn pos_hash(x: usize, y: usize, salt: u64) -> u64 {
 }
 
 pub fn spawn_props(mut commands: Commands, world: Res<WorldData>, assets: Res<AssetServer>) {
-    // 종별 씬 핸들 캐시 — 동일 모델 인스턴싱(배칭) 유도
     let mut scene_cache: HashMap<&'static str, _> = HashMap::new();
     for p in &world.props {
-        let spec = p.kind.model();
-        let scene = scene_cache
-            .entry(spec.path)
-            .or_insert_with(|| assets.load(GltfAssetLabel::Scene(0).from_asset(spec.path)))
-            .clone();
-        let ground = world.height_at(p.x as i32, p.y as i32);
-        let h1 = pos_hash(p.x, p.y, 1);
-        let h2 = pos_hash(p.x, p.y, 2);
-        let rot_y = (h1 % 3600) as f32 / 3600.0 * std::f32::consts::TAU;
-        let scale_jitter = 0.92 + (h2 % 1000) as f32 / 1000.0 * 0.16;
+        spawn_one_prop(&mut commands, &world, &assets, &mut scene_cache, p);
+    }
+}
+
+/// 라이브 맵 장식 산포 스폰 — GID 기반 결정론 장식(꽃·풀·자갈, 프라임 시 1회).
+/// 서버 자원과 무관한 순수 클라이언트 투영 — LiveResourceTag 없음(동기 대상 밖).
+pub fn spawn_decorative_props(commands: &mut Commands, world: &WorldData, assets: &AssetServer) {
+    let mut scene_cache: HashMap<&'static str, _> = HashMap::new();
+    for p in world.decorative_props() {
+        spawn_one_prop(commands, world, assets, &mut scene_cache, &p);
+    }
+}
+
+/// 소품 1개 스폰 — 씬 캐시 공유(동일 모델 인스턴싱 유도)·결정론 회전/지터.
+fn spawn_one_prop(
+    commands: &mut Commands,
+    world: &WorldData,
+    assets: &AssetServer,
+    scene_cache: &mut HashMap<&'static str, Handle<bevy::world_serialization::WorldAsset>>,
+    p: &super::data::PropSpec,
+) {
+    let spec = p.kind.model();
+    let scene = scene_cache
+        .entry(spec.path)
+        .or_insert_with(|| assets.load(GltfAssetLabel::Scene(0).from_asset(spec.path)))
+        .clone();
+    let ground = world.height_at(p.x as i32, p.y as i32);
+    let h1 = pos_hash(p.x, p.y, 1);
+    let h2 = pos_hash(p.x, p.y, 2);
+    let rot_y = (h1 % 3600) as f32 / 3600.0 * std::f32::consts::TAU;
+    let scale_jitter = 0.92 + (h2 % 1000) as f32 / 1000.0 * 0.16;
+    commands.spawn((
+        WorldAssetRoot(scene),
+        PropRoot {
+            kind: p.kind,
+            target_h: spec.target_h,
+            ground_y: ground,
+            rot_y,
+            scale_jitter,
+            variants: spec.variants,
+        },
+        Transform::from_translation(Vec3::new(p.x as f32 + 0.5, ground, p.y as f32 + 0.5)),
+    ));
+    if p.kind == PropKind::Campfire {
         commands.spawn((
-            WorldAssetRoot(scene),
-            PropRoot {
-                kind: p.kind,
-                target_h: spec.target_h,
-                ground_y: ground,
-                rot_y,
-                scale_jitter,
-                variants: spec.variants,
+            CampfireGlow,
+            PointLight {
+                color: Color::srgb(1.0, 0.66, 0.32),
+                intensity: 120000.0,
+                range: 9.0,
+                shadow_maps_enabled: false,
+                ..default()
             },
-            Transform::from_translation(Vec3::new(p.x as f32 + 0.5, ground, p.y as f32 + 0.5)),
+            Transform::from_translation(Vec3::new(
+                p.x as f32 + 0.5,
+                ground + 1.0,
+                p.y as f32 + 0.5,
+            )),
         ));
-        if p.kind == PropKind::Campfire {
-            commands.spawn((
-                CampfireGlow,
-                PointLight {
-                    color: Color::srgb(1.0, 0.66, 0.32),
-                    intensity: 120000.0,
-                    range: 9.0,
-                    shadow_maps_enabled: false,
-                    ..default()
-                },
-                Transform::from_translation(Vec3::new(
-                    p.x as f32 + 0.5,
-                    ground + 1.0,
-                    p.y as f32 + 0.5,
-                )),
-            ));
-        }
     }
 }
 

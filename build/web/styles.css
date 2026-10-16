@@ -34,6 +34,23 @@ body {
     height: 80px;
 }
 
+/* 라이브 프라임 전 로딩 오버레이 — 데모 월드 플래시를 가린다.
+   body.tf-loading은 index.html 기본값, Rust prime 완료 통보(tf.uiPrime)로 해제.
+   오프라인 폴백: 12초 후 자동 해제(데모 월드 관전용). */
+body.tf-loading .game-container::before {
+    content: " ";
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    background: #0b0e14;
+}
+body.tf-loading .lds-dual-ring {
+    z-index: 5;
+}
+body:not(.tf-loading) .lds-dual-ring {
+    display: none;
+}
+
 .lds-dual-ring:after {
     content: " ";
     display: block;
@@ -63,3 +80,19 @@ body {
     user-select: none;
     -webkit-touch-callout: none;
 }
+
+/* 라이브 프라임 로딩 캡션 — 스피너 아래 안내 */
+.tf-boot-caption {
+    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(50% + 3.5rem);
+    margin: auto;
+    text-align: center;
+    z-index: 5;
+    color: var(--ink-300, #8d97a8);
+    font-size: 13px;
+    letter-spacing: .02em;
+}
+body.tf-loading .tf-boot-caption { display: block; }

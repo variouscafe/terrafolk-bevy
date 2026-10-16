@@ -2,6 +2,7 @@
 //! 1실초 = 1게임분(서버 §17.37 기본 배속). T키 배속 토글.
 
 use bevy::prelude::*;
+use bevy::render::view::ColorGrading;
 
 #[derive(Resource)]
 pub struct DayTime {
@@ -59,6 +60,7 @@ pub fn apply_sky(
     weather: Res<super::precip::WeatherState>,
     mut sun_q: Query<&mut Transform, With<Sun>>,
     mut light_q: Query<&mut DirectionalLight>,
+    mut grading_q: Query<&mut ColorGrading, With<Camera3d>>,
     mut ambient: ResMut<GlobalAmbientLight>,
     mut clear: ResMut<ClearColor>,
 ) {
@@ -114,4 +116,15 @@ pub fn apply_sky(
         lerp3([1.0, 0.96, 0.88], [0.45, 0.55, 0.85], night)[1],
         lerp3([1.0, 0.96, 0.88], [0.45, 0.55, 0.85], night)[2],
     );
+
+    // ── 컬러그레이딩 — 이미지 전체 화이트밸런스·채도(조명색과 독립적인 무드 층)
+    if let Ok(mut g) = grading_q.single_mut() {
+        let gg = &mut g.global;
+        // 노을 웜(빨강+) ↔ 밤·흐림 쿨(파랑-) — CIE xy 크로마시티 시프트
+        gg.temperature = dusk_w * 0.22 - night * 0.16 - cool * 0.10;
+        // 밤·흐림 탈포화(코지 팔레트 지키는 미세 범위), 노을 살짝 증포화
+        gg.post_saturation = (1.0 + dusk_w * 0.08 - night * 0.16 - gray * 0.14).clamp(0.6, 1.2);
+        // 밤 노출 살짝 들어올림(+0.2 stop) — 어둠 속 실루엣만 남지 않게
+        gg.exposure = night * 0.2;
+    }
 }

@@ -76,7 +76,11 @@ pub fn apply_wind(
                 let handle = cache
                     .entry(mat.id())
                     .or_insert_with(|| {
-                        let base = std_mats.get(mat).cloned().unwrap_or_default();
+                        let mut base = std_mats.get(mat).cloned().unwrap_or_default();
+                        // 잎 재질 원천이 alphaMode BLEND(Quaternius 잎 텍스처)라
+                        // 반투명 겹침으로 화면이 유령 숲처럼 뿌옇게 덮인다.
+                        // 알파 컷아웃(Mask)으로 전환 — 불투명 잎·깊이 쓰기·정렬 문제 제거.
+                        base.alpha_mode = AlphaMode::Mask(0.5);
                         wind_mats.add(WindMaterial {
                             base,
                             extension: WindExtension::default(),

@@ -202,6 +202,10 @@ pub struct Fitted;
 #[derive(Component)]
 pub struct CampfireGlow;
 
+/// 발광 불꽃 메시(블룸 소스 — PointLight만으론 화면에 번짐이 생기지 않음).
+#[derive(Component)]
+pub struct CampfireFlame;
+
 fn pos_hash(x: usize, y: usize, salt: u64) -> u64 {
     let mut h = (x as u64).wrapping_mul(0x9E3779B97F4A7C15)
         ^ (y as u64).wrapping_mul(0xC2B2AE3D27D4EB4F)
@@ -212,27 +216,35 @@ fn pos_hash(x: usize, y: usize, salt: u64) -> u64 {
     h
 }
 
-pub fn spawn_props(mut commands: Commands, world: Res<WorldData>, assets: Res<AssetServer>) {
+pub fn spawn_props(
+    mut commands: Commands,
+    world: Res<WorldData>,
+    assets: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+) {
     let mut scene_cache: HashMap<&'static str, _> = HashMap::new();
     for p in &world.props {
-        spawn_one_prop(&mut commands, &world, &assets, &mut scene_cache, p);
-    }
-}
-
-/// 라이브 맵 장식 산포 스폰 — GID 기반 결정론 장식(꽃·풀·자갈, 프라임 시 1회).
-/// 서버 자원과 무관한 순수 클라이언트 투영 — LiveResourceTag 없음(동기 대상 밖).
-pub fn spawn_decorative_props(commands: &mut Commands, world: &WorldData, assets: &AssetServer) {
-    let mut scene_cache: HashMap<&'static str, _> = HashMap::new();
-    for p in world.decorative_props() {
-        spawn_one_prop(commands, world, assets, &mut scene_cache, &p);
+        spawn_one_prop(
+            &mut commands,
+            &world,
+            &assets,
+            &mut meshes,
+            &mut mats,
+            &mut scene_cache,
+            p,
+        );
     }
 }
 
 /// 소품 1개 스폰 — 씬 캐시 공유(동일 모델 인스턴싱 유도)·결정론 회전/지터.
-fn spawn_one_prop(
+#[allow(clippy::too_many_arguments)] // 씬 캐시·에셋 저장소 — 스폰 경로 공유(apply.rs)
+pub fn spawn_one_prop(
     commands: &mut Commands,
     world: &WorldData,
     assets: &AssetServer,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
     scene_cache: &mut HashMap<&'static str, Handle<bevy::world_serialization::WorldAsset>>,
     p: &super::data::PropSpec,
 ) {
@@ -259,22 +271,55 @@ fn spawn_one_prop(
         Transform::from_translation(Vec3::new(p.x as f32 + 0.5, ground, p.y as f32 + 0.5)),
     ));
     if p.kind == PropKind::Campfire {
-        commands.spawn((
+        spawn_campfire_fire(
+            commands,
+            meshes,
+            mats,
+            p.x as f32 + 0.5,
+            p.y as f32 + 0.5,
+            ground,
+        );
+    }
+}
+
+/// 모닥불 연출 스폰 — 발광 불꽃(emissive ×5, 블룸 소스) + 포인트 라이트.
+/// 데모(spawn_one_prop)·라이브(net::apply::sync_resources) 공통 경로.
+/// 반환: (불꽃, 라이트) 엔티티 — 라이브는 여기에 동기화 태그를 붙인다.
+/// 재질은 모닥불별 개별(위상 오프셋 플리커 — flicker_campfires 참조).
+pub fn spawn_campfire_fire(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    mats: &mut Assets<StandardMaterial>,
+    x: f32,
+    z: f32,
+    ground: f32,
+) -> (Entity, Entity) {
+    let flame = commands
+        .spawn((
+            CampfireFlame,
+            Mesh3d(meshes.add(Mesh::from(bevy::math::primitives::Sphere::new(0.20)))),
+            MeshMaterial3d(mats.add(StandardMaterial {
+                base_color: Color::BLACK,
+                emissive: FLAME_COLOR * 5.0,
+                ..default()
+            })),
+            Transform::from_translation(Vec3::new(x, ground + 0.55, z)),
+        ))
+        .id();
+    let glow = commands
+        .spawn((
             CampfireGlow,
             PointLight {
                 color: Color::srgb(1.0, 0.66, 0.32),
-                intensity: 120000.0,
+                intensity: 120_000.0,
                 range: 9.0,
                 shadow_maps_enabled: false,
                 ..default()
             },
-            Transform::from_translation(Vec3::new(
-                p.x as f32 + 0.5,
-                ground + 1.0,
-                p.y as f32 + 0.5,
-            )),
-        ));
-    }
+            Transform::from_translation(Vec3::new(x, ground + 1.0, z)),
+        ))
+        .id();
+    (flame, glow)
 }
 
 /// 메시 POSITION 속성에서 AABB(GPU 미추출 독립 — final_aabb는 추출 후에만 존재).
@@ -485,14 +530,31 @@ pub fn apply_fit(
     }
 }
 
-/// 모닥불 빛 플리커 — 따뜻한 요동(결정론 아님, 연출).
-pub fn flicker_campfires(time: Res<Time>, mut q: Query<&mut PointLight, With<CampfireGlow>>) {
+/// 불꽃 발광색(선형 sRGB — 배수로 HDR>1 만들어 블룸 유발).
+const FLAME_COLOR: LinearRgba = LinearRgba::new(1.0, 0.42, 0.10, 1.0);
+
+/// 플리커 계수 — 모닥불 좌표로 위상 오프셋(전체 동시 점멸 방지).
+fn flick(t: f32, tr: &Transform) -> f32 {
+    let ph = tr.translation.x * 3.1 + tr.translation.z * 1.7;
+    0.82 + 0.13 * (t * 9.0 + ph).sin()
+        + 0.05 * (t * 23.0 + ph + 1.7).sin()
+        + 0.04 * (t * 5.0 + ph * 2.0 + 4.1).cos()
+}
+
+/// 모닥불 빛·불꽃 플리커 — 따뜻한 요동(결정론 아님, 연출).
+pub fn flicker_campfires(
+    time: Res<Time>,
+    mut lights: Query<(&Transform, &mut PointLight), With<CampfireGlow>>,
+    mut flames: Query<(&Transform, &MeshMaterial3d<StandardMaterial>), With<CampfireFlame>>,
+    mut mats: ResMut<Assets<StandardMaterial>>,
+) {
     let t = time.elapsed_secs();
-    for mut light in &mut q {
-        let f = 0.82
-            + 0.13 * (t * 9.0).sin()
-            + 0.05 * (t * 23.0 + 1.7).sin()
-            + 0.04 * (t * 5.0 + 4.1).cos();
-        light.intensity = 120000.0 * f;
+    for (tr, mut light) in &mut lights {
+        light.intensity = 120_000.0 * flick(t, tr);
+    }
+    for (tr, mat) in &mut flames {
+        if let Some(mut m) = mats.get_mut(&mat.0) {
+            m.emissive = FLAME_COLOR * 5.0 * flick(t, tr);
+        }
     }
 }

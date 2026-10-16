@@ -435,3 +435,114 @@
 /* 채팅 바 노출 시 관전 HUD(#tf-hud, worldsim.js)를 위로 피한다 */
 body.tf-chat-on #tf-hud { bottom: calc(6.5rem + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 600px) { .tf-chatdock { width: calc(100% - .75rem); } }
+
+/* ── 주민 히어로 카드(맵 클릭 선택) — 좌하단 컨텍스트 패널 ──
+ * 상용 시뮬 관전 패턴: 신원(초상·이름·배지) → 행동/목표 → 욕구 → 소지 → 동작.
+ * 룩은 채팅 독(.tf-chathead)과 동일 글래스 톤. 모바일에선 하단 독과 겹치지
+ * 않게 상단 바 바로 아래 스트립으로 전환. */
+.tf-hero {
+  position: fixed; z-index: 25; left: .75rem;
+  bottom: calc(.75rem + env(safe-area-inset-bottom, 0px));
+  display: flex; gap: .625rem; max-width: min(24rem, calc(100% - 1.5rem));
+  border-radius: .75rem; border: 1px solid var(--ink-700);
+  background: rgba(11, 14, 20, .88); padding: .625rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .4);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  animation: tf-hero-in .22s cubic-bezier(.2, .9, .3, 1.2);
+}
+@keyframes tf-hero-in {
+  from { opacity: 0; transform: translateY(.75rem) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .tf-hero { animation: none; } }
+
+.tf-hero-frame {
+  position: relative; flex-shrink: 0; width: 5.5rem; height: 5.5rem;
+  display: grid; place-items: end center; overflow: hidden;
+  border-radius: .5rem; border: 1px solid var(--ink-700);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(124, 156, 255, .10), transparent 60%),
+    var(--ink-900);
+}
+.tf-hero-ground {
+  position: absolute; bottom: .375rem; width: 3.75rem; height: .75rem;
+  border-radius: 50%; background: rgba(0, 0, 0, .45); filter: blur(2px);
+}
+.tf-hero-sprite {
+  position: relative; width: 64px; height: 64px;
+  background-repeat: no-repeat; background-size: 576px 256px;
+  background-position: 0 0; image-rendering: pixelated;
+  transform: scale(1.18); transform-origin: 50% 100%;
+  animation: tf-hero-walk .72s steps(9) infinite;
+}
+.tf-hero-sprite.empty {
+  display: grid; place-items: center; color: var(--ink-500);
+  animation: none; background: none; transform: none;
+}
+@keyframes tf-hero-walk { from { background-position-x: 0; } to { background-position-x: -576px; } }
+@media (prefers-reduced-motion: reduce) { .tf-hero-sprite { animation: none; } }
+
+.tf-hero-main { min-width: 0; flex: 1 1 0%; display: flex; flex-direction: column; gap: .3rem; }
+.tf-hero-head { display: flex; align-items: center; gap: .375rem; }
+.tf-hero-name {
+  overflow: hidden; font-size: 13px; font-weight: 700;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.tf-hero-badge {
+  flex-shrink: 0; border-radius: 999px; padding: .0625rem .4375rem;
+  font-size: 9px; font-weight: 600; line-height: 1.5;
+}
+.tf-hero-badge.mine { background: rgba(124, 156, 255, .16); color: var(--accent); }
+.tf-hero-badge.bot { background: rgba(140, 190, 120, .14); color: #9fd48a; }
+.tf-hero-x {
+  margin-left: auto; flex-shrink: 0; display: grid; width: 1.5rem; height: 1.5rem;
+  place-items: center; border-radius: .375rem; color: var(--ink-400);
+}
+.tf-hero-x:hover { background: var(--ink-700); color: var(--ink-100); }
+.tf-hero-act { display: flex; flex-direction: column; gap: .125rem; min-width: 0; }
+.tf-hero-act-kind { font-size: 10px; font-weight: 600; color: var(--accent); }
+.tf-hero-goal {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; font-size: 11px; line-height: 1.45; color: var(--ink-200);
+}
+.tf-hero-needs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: .1875rem .625rem;
+}
+.tf-hero-need { display: flex; align-items: center; gap: .3125rem; }
+.tf-hero-need-label { flex-shrink: 0; width: 1.75rem; font-size: 9px; color: var(--ink-400); }
+.tf-hero-bar { flex: 1 1 0%; height: .25rem; }
+.tf-hero-need-val {
+  flex-shrink: 0; min-width: 1.25rem; text-align: right;
+  font-size: 9px; font-variant-numeric: tabular-nums; color: var(--ink-300);
+}
+.tf-hero-need-val.hot { color: #e88; }
+.tf-hero-inv { display: flex; flex-wrap: wrap; gap: .25rem; min-height: 1.125rem; }
+.tf-hero-inv .tf-chipbox { padding: .0625rem .3125rem; font-size: 9px; }
+.tf-hero-inv .tf-chipbox .tf-qty { color: var(--ink-300); }
+.tf-hero-inv .tf-chipbox.more { color: var(--ink-400); }
+.tf-hero-inv .tf-empty { font-size: 9px; }
+.tf-hero-btns { display: flex; gap: .375rem; margin-top: .125rem; }
+.tf-hero-btn {
+  flex: 1 1 0; display: flex; align-items: center; justify-content: center; gap: .25rem;
+  border-radius: .5rem; border: 1px solid var(--ink-700);
+  background: var(--ink-800); padding: .3125rem .25rem;
+  font-size: 10px; font-weight: 600; color: var(--ink-100);
+  transition: border-color .15s, background .15s;
+}
+.tf-hero-btn:hover { border-color: rgba(124, 156, 255, .55); background: rgba(124, 156, 255, .10); }
+.tf-hero-btn:active { transform: translateY(1px); }
+.tf-hero-btn svg { flex-shrink: 0; color: var(--accent); }
+
+/* 모바일 — 하단 채팅 독과 경합하지 않도록 상단 스트립으로 전환 */
+@media (max-width: 600px) {
+  .tf-hero {
+    left: .5rem; right: .5rem; top: calc(2.25rem + .5rem); bottom: auto;
+    max-width: none; flex-direction: row;
+  }
+  .tf-hero-frame { width: 3.5rem; height: 3.5rem; }
+  .tf-hero-sprite { width: 48px; height: 48px; background-size: 432px 192px; }
+  @keyframes tf-hero-walk { from { background-position-x: 0; } to { background-position-x: -432px; } }
+  .tf-hero-needs { grid-template-columns: 1fr 1fr; }
+}
+.tf-hero.stale { opacity: .6; }
+.tf-hero.stale .tf-hero-sprite { animation-play-state: paused; }

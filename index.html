@@ -11,7 +11,7 @@
         <link data-trunk rel="inline" href="build/web/styles.css"/>
         <link data-trunk rel="inline" href="assets/web/tf-ui.css"/>
     </head>
-    <body>
+    <body class="tf-loading">
         <link data-trunk rel="inline" href="build/web/sound.js"/>
         <script src="assets/web/colyseus.js"></script>
         <script src="assets/web/worldsim.js"></script>
@@ -25,6 +25,8 @@
         <script src="assets/web/tf-ui.js"></script>
         <div class="game-container">
             <div class="lds-dual-ring"></div>
+            <!-- 폴백 텍스트 — tf-ui.js가 DOMContentLoaded에 tOr('boot.loading')로 교체 -->
+            <div class="tf-boot-caption">세계에 접속하는 중…</div>
             <canvas id="bevy">
                 Javascript and support for canvas is required
             </canvas>
@@ -40,6 +42,15 @@
                 var block = function (e) { e.preventDefault(); };
                 c.addEventListener("touchstart", block, { passive: false });
                 c.addEventListener("touchmove", block, { passive: false });
+            })();
+            // 라이브 프라임 로딩 해제 — Rust(apply.rs prime_live_world)가 tf.uiPrime()
+            // 를 호출하면 오버레이를 내린다(데모 월드는 wasm에서 스폰하지 않는다).
+            // 백엔드 불통 시 스피너 유지 — worldsim이 계속 재시도하다 살아나면 프라임.
+            (function () {
+                var tf = window.terrafolk || (window.terrafolk = {});
+                tf.uiPrime = function () {
+                    document.body.classList.remove("tf-loading");
+                };
             })();
         </script>
     </body>

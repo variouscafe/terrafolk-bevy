@@ -6,6 +6,7 @@
 use bevy::gltf::{Gltf, GltfAssetLabel};
 use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
+use std::time::Duration;
 
 use super::data::{SIZE, WorldData};
 
@@ -98,19 +99,20 @@ pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Re
 pub fn villager_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
-    q_self: Query<(&Villager, &VillagerModel)>,
+    q_self: Query<(&Villager, &VillagerModel, &Transform)>,
     children: Query<&Children>,
     players: Query<(Entity, &mut AnimationPlayer)>,
     q_walk: super::models::FitQuery,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
     meshes: Res<Assets<Mesh>>,
+    world: Res<super::data::WorldData>,
 ) {
-    let Ok((villager, model)) = q_self.get(trigger.entity) else {
+    let Ok((villager, model, tr)) = q_self.get(trigger.entity) else {
         return;
     };
     let Some(gltf) = gltfs.get(&model.0) else {
-        return; // 아직 로딩 — 이 옵저버는 1회성이므로 폴백: Update 핏 시스템이 없음 → 대안 필요
+        return; // 아직 로딩 — WorldAsset은 Gltf 처리 후 준비되므로 실제로는 도달 드묾
     };
     // Walk/Idle 클립 검색 — 접미 매칭(프리픽스는 모델별 상이)
     let find = |suffix: &str| {
@@ -135,30 +137,47 @@ pub fn villager_ready(
             break;
         }
     }
-    let Some(player_e) = player_e else { return };
+    let Some(player_e) = player_e else {
+        return;
+    };
     if let Ok((_, player)) = players.get(player_e) {
         let mut player = player.clone();
-        player.play(idle_i).repeat();
-        commands.entity(player_e).insert(player);
+        // AnimationTransitions — 크로스페이드 주체(재생은 이 컴포넌트 경유로만).
+        let mut transitions = AnimationTransitions::default();
+        transitions
+            .play(&mut player, idle_i, Duration::ZERO)
+            .repeat();
+        commands.entity(player_e).insert((player, transitions));
     }
     commands
         .entity(player_e)
         .insert(AnimationGraphHandle(graph_h));
 
-    // 오토펏 — 서브트리 AABB(조상 체인 행렬)로 스케일·착지
-    let kids: Vec<Entity> = children
-        .get(trigger.entity)
-        .map(|c| c.iter().collect())
-        .unwrap_or_default();
-    if let Some((mn, mx)) = super::models::meshes_aabb(&kids, trigger.entity, &q_walk, &meshes) {
+    // 오토펏 — 서브트리 전체 메시의 결합 AABB(조상 체인 행렬)로 스케일·착지.
+    // GLB 루트 직속 자식엔 메시가 없고 Armature 아래 깊이 있으므로 재귀 수집.
+    let mut measure: Vec<Entity> = Vec::new();
+    for child in children.iter_descendants(trigger.entity) {
+        if q_walk
+            .get(child)
+            .map(|(_, _, m, _, _)| m.is_some())
+            .unwrap_or(false)
+        {
+            measure.push(child);
+        }
+    }
+    if let Some((mn, mx)) = super::models::meshes_aabb(&measure, trigger.entity, &q_walk, &meshes) {
         let size = (mx - mn).max(Vec3::splat(1e-4));
-        let s = villager.target_h / size.y;
-        let root_y = villager.from.y - mn.y * s;
-        commands.entity(trigger.entity).insert(
-            Transform::from_translation(Vec3::new(villager.from.x, root_y, villager.from.z))
-                .with_scale(Vec3::splat(s))
-                .with_rotation(Quat::from_rotation_y(MODEL_YAW)),
+        let s = (villager.target_h / size.y).clamp(0.05, 50.0);
+        // 착지 기준은 현재 위치의 지면 — 씬 로딩 사이 배회로 스폰점에서
+        // 벗어났어도 되돌아가지 않는다(발밑 고정, 회전·수평 위치 보존).
+        let ground = world.height_at(
+            tr.translation.x.floor() as i32,
+            tr.translation.z.floor() as i32,
         );
+        let mut fitted = *tr;
+        fitted.translation.y = ground - mn.y * s;
+        fitted.scale = Vec3::splat(s);
+        commands.entity(trigger.entity).insert(fitted);
     }
     commands.entity(trigger.entity).insert(VillagerAnims {
         walk: walk_i,
@@ -247,22 +266,25 @@ pub fn wander(
 }
 
 /// 보행↔대기 애니메이션 전환(플레이어는 하위 엔티티에 있음).
+/// 0.25초 크로스페이드 — 하드 컷은 주민을 기계적으로 보이게 한다(생명감 직결).
 pub fn animate_walk_idle(
     mut q: Query<(&Villager, &mut VillagerAnims)>,
-    mut players: Query<&mut AnimationPlayer>,
+    mut players: Query<(&mut AnimationPlayer, &mut AnimationTransitions)>,
 ) {
     for (v, mut anims) in &mut q {
         if v.moving == anims.current_walk {
             continue;
         }
         anims.current_walk = v.moving;
-        if let Ok(mut player) = players.get_mut(anims.player_e) {
+        if let Ok((mut player, mut transitions)) = players.get_mut(anims.player_e) {
             let idx = if v.moving {
                 anims.walk
             } else {
                 anims.idle_anim
             };
-            player.play(idx).repeat();
+            transitions
+                .play(&mut player, idx, Duration::from_millis(250))
+                .repeat();
         }
     }
 }

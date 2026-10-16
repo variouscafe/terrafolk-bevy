@@ -7,6 +7,7 @@ pub mod camera_rig;
 pub mod data;
 pub mod daynight;
 pub mod models;
+pub mod occlusion;
 pub mod pick;
 pub mod precip;
 pub mod splat;
@@ -40,35 +41,45 @@ impl Plugin for WorldPlugin {
             .add_systems(
                 Startup,
                 (
-                    terrain::spawn_terrain,
-                    water::spawn_water,
                     camera_rig::spawn_camera,
                     daynight::spawn_sun,
-                    models::spawn_props,
-                    villager::spawn_villagers,
                     pick::spawn_ring,
                     pick::register_bridge,
                 ),
-            )
-            .add_systems(
-                Update,
-                (
-                    camera_rig::camera_control,
-                    daynight::advance_time,
-                    daynight::apply_sky,
-                    precip::attach_precip,
-                    precip::sync_precip,
-                    models::fit_props,
-                    models::apply_fit,
-                    wind::apply_wind,
-                    models::flicker_campfires,
-                    villager::wander,
-                    villager::animate_walk_idle,
-                    (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
-                    cam_follow::follow_camera,
-                    debug_screenshot,
-                ),
             );
+        // 데모 결정론 월드는 네이티브 개발 빌드 전용 — 웹(wasm)은 라이브 접속→
+        // 프라임으로 곧장 간다(스폰-철거 낭비·플래시 제거. 로딩 오버레이는
+        // tf.uiPrime 통보로 해제).
+        #[cfg(not(target_arch = "wasm32"))]
+        app.add_systems(
+            Startup,
+            (
+                terrain::spawn_terrain,
+                water::spawn_water,
+                models::spawn_props,
+                villager::spawn_villagers,
+            ),
+        );
+        app.add_systems(
+            Update,
+            (
+                camera_rig::camera_control,
+                daynight::advance_time,
+                daynight::apply_sky,
+                precip::attach_precip,
+                precip::sync_precip,
+                models::fit_props,
+                models::apply_fit,
+                wind::apply_wind,
+                models::flicker_campfires,
+                villager::wander,
+                villager::animate_walk_idle,
+                (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
+                occlusion::fade_occluders,
+                cam_follow::follow_camera,
+                debug_screenshot,
+            ),
+        );
     }
 }
 

@@ -1670,6 +1670,7 @@
         name: a.name || (cur ? cur.name : a.id),
         status: a.status != null ? a.status : (cur ? cur.status : ''),
         actType: a.actType != null ? a.actType : (cur ? cur.actType : ''),
+        actProgress: a.actProgress != null ? a.actProgress : (cur ? cur.actProgress : 0),
         needs: a.needs || (cur ? cur.needs : {}),
         inv: a.inventory != null ? I.parseInv(a.inventory) : (cur ? cur.inv : {}),
         goalText: a.goalText != null ? a.goalText : (cur ? cur.goalText : ''),
@@ -1738,6 +1739,9 @@
   // ── Rust 픽 브리지 — 빈 땅 클릭 좌표로 유물 카드(§17.38).
   //    주민 픽킹은 Rust pick.rs가直接 하고 tf.onPickAgent로 돌아온다.
   function pickAt(x, y) {
+    // 건물·묘지 탭 툴팁(§17.78 — 터치 고정 2.5s) — tf-world-ui가 판정·표시.
+    // 유물 카드보다 우선(발판 안 클릭은 집 안내가 우선).
+    if (window.TF_WORLD_UI && window.TF_WORLD_UI.showResAt(x, y)) return;
     var bestR = null, bestRd = 4;
     Object.keys(S.resMap).forEach(function (rid) {
       var r = S.resMap[rid];
@@ -1798,6 +1802,8 @@
     notify: notify,
     setNet: function (live) { S.netLive = live; },
     render: schedule,
+    // 소지 칩 아이콘 HTML — ui.js 우측 레일 소지품 패널이 재사용(동일 룩 유지)
+    chipIcon: chipIconHtml,
   };
   I.onLocale(function () { schedule(); });
 

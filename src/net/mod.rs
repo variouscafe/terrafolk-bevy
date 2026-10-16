@@ -112,9 +112,10 @@ impl Plugin for NetPlugin {
                     drain_frames,
                     apply::prime_live_world,
                     apply::sync_daynight,
-                    apply::sync_resources,
+                    resources::sync_resources,
                     apply::sync_agents,
                     apply::live_move,
+                    resources::live_res_move,
                     apply::debug_goto_animal,
                 )
                     .chain(),
@@ -179,5 +180,7 @@ pub fn drain_frames(queue: Res<FrameQueue>, mut net: ResMut<NetState>) {
     }
 }
 
-/// 라이브 적용 로직(지형 프라임·시간·자원·주민)
+/// 라이브 적용 로직(지형 프라임·시간·주민)
 pub mod apply;
+/// 라이브 자원 동기(자원·발판·동물 배위) — apply에서 기능별 분리
+pub mod resources;

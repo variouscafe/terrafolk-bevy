@@ -176,6 +176,12 @@
     });
     if (mtQueue.length && !mtTimer) mtTimer = setTimeout(mtFlush, 350);
   }
+  /** 동기 캐시 조회(툴팁 패턴 — FE cachedText 포트): 없으면 null. */
+  function cachedText(locale, text) {
+    if (locale === 'en' || !text) return text;
+    var v = mtCache.get(locale + '|' + text);
+    return v !== undefined ? v : null;
+  }
   function translateText(locale, text) {
     if (locale === 'en' || !text) return Promise.resolve(text);
     var key = locale + '|' + text;
@@ -384,6 +390,7 @@
     t: trNow, tOr: trOr, translate: translate,
     eventText: eventText, renderEventKey: renderEventKey,
     translateText: translateText,
+    cachedText: cachedText,
     dateOf: dateOf, clockText: clockText, dayDialSvg: dayDialSvg,
     highlightOf: highlightOf, agentColor: agentColor,
     EV_CAT_OF: EV_CAT_OF, EV_CATS: EV_CATS, EV_KIND_ICON: EV_KIND_ICON, EVENT_COLOR: EVENT_COLOR,

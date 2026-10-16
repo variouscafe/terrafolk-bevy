@@ -108,10 +108,9 @@
     } catch (e) { /* 클라이언트 세션은 정리 완료 */ }
   }
 
-  // ── HUD — 관전 채팅·이벤트 오버레이 + 접속 상태 배지
+  // ── HUD — 접속 상태 배지(관전 채팅·이벤트의 화면 표현은 말풍선·토스트가 담당)
   let hud = null;
   let badge = null;
-  let lastEvAt = 0;
 
   function ensureHud() {
     if (hud) return;
@@ -144,34 +143,6 @@
     if (window.TF_UI) window.TF_UI.setNet(live);
   }
 
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
-    });
-  }
-
-  function hudLine(html, cls) {
-    ensureHud();
-    if (cls === 'ev') {
-      // 이벤트 홍수 제한 — 1.5s당 1줄(최신 것만)
-      const now = Date.now();
-      if (now - lastEvAt < 1500) return;
-      lastEvAt = now;
-    }
-    const el = document.createElement('div');
-    el.style.cssText =
-      'text-shadow:0 1px 3px rgba(0,0,0,.85);opacity:0;transition:opacity .5s;';
-    if (cls === 'ev') el.style.color = 'rgba(255,244,214,.92)';
-    el.innerHTML = html;
-    hud.appendChild(el);
-    requestAnimationFrame(function () { el.style.opacity = '1'; });
-    while (hud.children.length > 7) hud.removeChild(hud.children[1]);
-    setTimeout(function () {
-      el.style.opacity = '0';
-      setTimeout(function () { el.remove(); }, 600);
-    }, cls === 'chat' ? 15000 : 9000);
-  }
-
   function snapshot(st) {
     const agents = [];
     st.agents.forEach(function (a, id) {
@@ -181,6 +152,7 @@
         id: id, name: a.name, kind: a.kind,
         x: a.x, y: a.y, facing: a.facing,
         status: a.status, actType: a.actType,
+        actProgress: a.actProgress != null ? a.actProgress : 0,
         look: a.lookJson,
         // UI 상세(팝업용) — Rust LiveAgent는 미지정 필드를 무시한다
         needs: { hunger: a.hunger, thirst: a.thirst, fatigue: a.fatigue, warmth: a.warmth },
@@ -195,7 +167,11 @@
         x: r.x, y: r.y, state: r.stateJson,
       });
     });
-    if (typeof st.mapJson === 'string' && st.mapJson) lastMap = st.mapJson;
+    if (typeof st.mapJson === 'string' && st.mapJson) {
+      lastMap = st.mapJson;
+      // 미니맵 베이크용 1회 노출 — tf-world-ui.js가 읽고 파싱한다(매초 전파 방지)
+      if (!window.TF_MAP_JSON) window.TF_MAP_JSON = st.mapJson;
+    }
     // 발명품 레지스트리(§17.30) — 문명 팝업·인벤 칩 아이콘의 원천
     let inventions = [];
     try {
@@ -292,22 +268,16 @@
       room.onMessage('hello', function (m) {
         if (window.TF_UI) window.TF_UI.feed.scope(m || { kind: 'spectator' });
       });
-      // 채팅 — 발화 원문 우선(§17.55), 없으면 영문 정본.
-      // 대화 로그 패널이 열려 있으면 HUD 줄은 생략(중복 방지)
+      // 채팅 — 발화 원문 우선(§17.55). 화면 표현은 3D 씬 말풍선(tf-world-ui.js)
+      // 와 대화 로그(ui.js)가 담당 — FE와 동일(워드 HUD 줄은 폐지, §17.44 포트).
       room.onMessage('chat', function (m) {
-        if (!ui.logOpenFlag) {
-          const nm = names[m.agent_id] || m.speaker || '?';
-          hudLine('<b>' + esc(nm) + '</b> · ' + esc(m.text || m.text_en || ''), 'chat');
-        }
         for (const fn of chatRowListeners) {
           try { fn(m); } catch (e) { console.error('[worldsim] ui 수신기 오류', e); }
         }
         if (window.TF_UI) window.TF_UI.feed.chat(m);
       });
-      // 이벤트 — 영문 렌더 정본 표시(관전 정보창)
+      // 이벤트 — 하이라이트 토스트(tf-world-ui.js)·기록 팝업이 소비.
       room.onMessage('event', function (e) {
-        const tx = e && e.payload && e.payload.text;
-        if (tx) hudLine(esc(tx), 'ev');
         if (window.TF_UI) window.TF_UI.feed.event(e);
       });
       room.onLeave(function () {

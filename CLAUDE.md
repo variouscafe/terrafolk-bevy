@@ -4,6 +4,13 @@
 
 **목표 — "AI 시뮬레이션 게임 1위"**([`../terrafolk` 북극성과 동일](../terrafolk/CLAUDE.md)): 이 클라이언트의 모든 작업(그래픽·UX·성능)은 AI 주민의 생명감과 관전 몰입을 최우선으로 판단한다.
 
+## 코드 규칙
+
+- **파일은 기능별로 분리하고 가능한 500줄을 넘지 않는다.** 신규·확장 파일은
+  물론 기존 파일이 그 이상으로 자라면 기능 단위로 쪼갠다(예: `net::apply` →
+  `net::resources`, `tf-world-ui.js` → `tf-ambience.js`·`tf-minimap.js`).
+  JS는 로드 순서 계약(index.html 주석)을 지키면서 분리한다.
+
 ## 역할 분담
 
 - **이 repo = client 담당**: Bevy 웹 클라이언트 — **웹버전 배포를 타겟**으로 개발한다 (배포 https://terrafolk-rust.pages.dev).

@@ -21,6 +21,10 @@
     var i = I();
     return i ? i.t(key, params) : (fallback || key);
   }
+  function tOr(key, fallback) {
+    var i = I();
+    return i ? i.tOr(key, fallback) : (fallback || key);
+  }
   function locale() {
     var i = I();
     return i ? i.getLocale() : 'en';
@@ -311,6 +315,13 @@
         renderHead();
         if (logOpen) renderLog();
       }
+      sideRebuild();
     });
   }
+
+  // ── 레일 브리지 — tf-rail.js(우측 정보 레일)가 선택·로그 배타를 공유한다.
+  window.TF_CHAT = {
+    getSel: function () { return sel; },
+    setLogOpen: setLogOpen,
+  };
 })();

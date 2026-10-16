@@ -1,6 +1,7 @@
 //! 월드 — 데모 결정론 데이터 + 2.5D 아이소 렌더(스플랫 지형·3D 소품·하루순환·수면).
 //! 계약: 서버는 정사각 그리드를 주고 클라이언트가 투영(docs/data-contract.md).
 
+pub mod bld;
 pub mod cam_follow;
 pub mod camera_input;
 pub mod camera_rig;
@@ -12,6 +13,7 @@ pub mod occlusion;
 pub mod overlay;
 pub mod pick;
 pub mod precip;
+pub mod propsfx;
 pub mod splat;
 pub mod terrain;
 pub mod villager;
@@ -76,6 +78,10 @@ impl Plugin for WorldPlugin {
                 models::apply_fit,
                 wind::apply_wind,
                 models::flicker_campfires,
+                bld::site_dressing,
+                bld::hut_lights,
+                propsfx::bob_relics,
+                propsfx::spark_veins,
                 villager::wander,
                 villager::animate_walk_idle,
                 (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),

@@ -115,6 +115,7 @@ impl Plugin for NetPlugin {
                     apply::sync_resources,
                     apply::sync_agents,
                     apply::live_move,
+                    apply::live_res_move,
                     apply::debug_goto_animal,
                 )
                     .chain(),

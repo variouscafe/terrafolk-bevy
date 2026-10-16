@@ -81,7 +81,27 @@
     '#tf-minimap{position:fixed;left:12px;top:46px;z-index:26;overflow:hidden;' +
     'border-radius:8px;border:2px solid rgba(6,8,10,.9);' +
     'box-shadow:0 10px 24px rgba(0,0,0,.4);cursor:crosshair;pointer-events:auto;}' +
-    '#tf-minimap canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}';
+    '#tf-minimap canvas{display:block;width:100%;height:100%;image-rendering:pixelated;}' +
+    // 자원 호버 툴팁 — 마우스 전용(FE makeTooltip 룩: 검은 배경 12px, 220px wrap)
+    '#tf-restip{position:fixed;z-index:27;display:none;max-width:220px;padding:4px 6px;' +
+    'border-radius:4px;background:rgba(0,0,0,.85);color:#f5f2e8;font-size:12px;' +
+    'line-height:1.5;white-space:pre-wrap;pointer-events:none;' +
+    'text-shadow:0 1px 2px rgba(0,0,0,.8);}' +
+    // 계절 틴트 — FE SEASON_TINT의 오버레이 포트(겨울 청색 등)
+    '#tf-season{position:fixed;inset:0;z-index:24;pointer-events:none;' +
+    'mix-blend-mode:multiply;transition:background 2s;}' +
+    // 번개 섬광 — storm 국면(체인 이중 타격 포함)
+    '#tf-lightning{position:fixed;inset:0;z-index:29;pointer-events:none;' +
+    'background:#eaf2ff;opacity:0;}' +
+    // 사망 연출 — 🕯 상승 페이드 2.4s + 불씨 파편 7개(FE scene.ts 포트)
+    '.tf-candle{position:fixed;z-index:26;pointer-events:none;font-size:18px;' +
+    'animation:tf-candle-up 2.4s ease-out forwards;}' +
+    '.tf-candle .sp{position:absolute;left:9px;top:9px;width:3px;height:3px;' +
+    'border-radius:50%;background:#ffb35c;animation:tf-candle-sp 2.4s ease-out forwards;}' +
+    '@keyframes tf-candle-up{0%{opacity:0;transform:translateY(6px);}' +
+    '15%{opacity:1;}100%{opacity:0;transform:translateY(-46px);}}' +
+    '@keyframes tf-candle-sp{0%{opacity:0;transform:translate(0,0);}' +
+    '20%{opacity:.9;}100%{opacity:0;transform:translate(var(--dx),var(--dy));}}';
   document.head.appendChild(st);
 
   // ═══════════ 주민 앵커 오버레이 ═══════════
@@ -286,6 +306,11 @@
   function wrapFeed() {
     var T = UI();
     if (!T || T.feed.__worldui) return;
+    var origFrame = T.feed.frame;
+    T.feed.frame = function (f) {
+      if (origFrame) origFrame(f);
+      syncAmbience();
+    };
     var origChat = T.feed.chat;
     T.feed.chat = function (m) {
       if (origChat) origChat(m);
@@ -305,12 +330,202 @@
         },
       });
       if (h && h.text) pushToast(h);
+      if (e && e.kind === 'death') deathCandle(e.agent_id);
     };
     T.feed.__worldui = true;
   }
   wrapFeed();
   // tf-ui.js가 늦게 로드되는 경합 방지(현재 순서는 본 파일이 뒤지만 방어)
   document.addEventListener('DOMContentLoaded', wrapFeed);
+
+  // ═══════════ 계절 틴트 · 번개 · 사망 연출(FE scene·weatherfx 포트) ═══════════
+  var SEASON_TINT = {
+    spring: 'rgba(216,255,216,.10)', summer: 'rgba(255,242,200,.08)',
+    autumn: 'rgba(255,216,168,.12)', winter: 'rgba(200,220,255,.14)',
+  };
+  var seasonEl = document.createElement('div');
+  seasonEl.id = 'tf-season';
+  document.body.appendChild(seasonEl);
+  var lightningEl = document.createElement('div');
+  lightningEl.id = 'tf-lightning';
+  document.body.appendChild(lightningEl);
+
+  function syncAmbience() {
+    var S = UI() && UI().state;
+    var clock = S ? S.clock : {};
+    var tint = SEASON_TINT[clock.season] || 'rgba(255,255,255,0)';
+    if (seasonEl.__bg !== tint) {
+      seasonEl.__bg = tint;
+      seasonEl.style.background = tint;
+    }
+    scheduleLightning(clock.weather);
+  }
+
+  // 번개 — storm에서만. 3.5~9s 간격, 25% 이중 타격(FE flashLightning 체인)
+  var boltTimer = 0;
+  function scheduleLightning(weather) {
+    var storm = weather === 'storm';
+    if (boltTimer) { clearTimeout(boltTimer); boltTimer = 0; }
+    if (!storm) { lightningEl.style.opacity = '0'; return; }
+    boltTimer = setTimeout(function () {
+      flashBolt(0);
+      if (Math.random() < 0.25) setTimeout(function () { flashBolt(0.12); }, 120 + Math.random() * 180);
+      scheduleLightning('storm');
+    }, 3500 + Math.random() * 5500);
+  }
+  function flashBolt(delay) {
+    if (delay) {
+      setTimeout(function () { flashBolt(0); }, delay * 1000);
+      return;
+    }
+    lightningEl.style.transition = 'none';
+    lightningEl.style.opacity = '0.55';
+    requestAnimationFrame(function () {
+      lightningEl.style.transition = 'opacity .3s';
+      lightningEl.style.opacity = '0';
+    });
+  }
+
+  /** 사망 연출 — 마지막 투영 위치에서 🕯 상승 페이드 + 불씨 파편 7개 */
+  function deathCandle(agentId) {
+    var p = proj[agentId];
+    if (!p) return;   // 화면 밖 사망 — 연출 생략(토스트는 표시됨)
+    var el = document.createElement('div');
+    el.className = 'tf-candle';
+    el.textContent = '🕯';
+    el.style.left = (p.x - 9) + 'px';
+    el.style.top = (p.y - 30) + 'px';
+    for (var i = 0; i < 7; i++) {
+      var sp = document.createElement('span');
+      sp.className = 'sp';
+      sp.style.setProperty('--dx', ((Math.random() - 0.5) * 26).toFixed(0) + 'px');
+      sp.style.setProperty('--dy', (-14 - Math.random() * 18).toFixed(0) + 'px');
+      el.appendChild(sp);
+    }
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 2500);
+  }
+
+  // ═══════════ 자원 툴팁 — §17.78 "누구 집"·묘지 비문·유물 설명 ═══════════
+  var tipEl = document.createElement('div');
+  tipEl.id = 'tf-restip';
+  document.body.appendChild(tipEl);
+  var tipLockUntil = 0;   // 터치 고정 해제 시각(ms)
+
+  /** 표시 번역(FE mtTooltip) — 비동기 캐시 충전, 이번 틱은 원문 */
+  function mtTip(text) {
+    var i18n = I();
+    if (!i18n || i18n.getLocale() === 'en' || !text) return String(text);
+    i18n.translateText(i18n.getLocale(), String(text)).catch(function () {});
+    var cached = i18n.cachedText ? i18n.cachedText(i18n.getLocale(), String(text)) : null;
+    return cached != null ? cached : String(text);
+  }
+
+  function resTipText(r) {
+    var i18n = I();
+    var st = r.state || {};
+    if (r.kind === 'hut') {
+      var bld = i18n ? i18n.tOr('bld.' + String(st.type || 'HUT'), String(st.type || 'HUT')) : String(st.type || 'HUT');
+      var done = st.stage === 'COMPLETED';
+      var owner = st.ownerName || st.owner;
+      if (done) {
+        return owner
+          ? i18n.t('tip.hut.home', { name: String(owner), bld: bld, x: r.x, y: r.y })
+          : i18n.t('tip.hut.vacant', { bld: bld, x: r.x, y: r.y });
+      }
+      return i18n.t('tip.hut.site', {
+        name: String(st.by || '?'), bld: bld,
+        p: Math.round(Number(st.progress || 0) * 100),
+      });
+    }
+    if (r.kind === 'grave') {
+      var epitaph = st.epitaph ? '\n「' + mtTip(String(st.epitaph).slice(0, 60)) + '」' : '';
+      return i18n.t('tip.grave', {
+        name: String(st.name || i18n.t('tip.grave.someone')),
+        age: st.age != null ? st.age : '?',
+      }) + epitaph;
+    }
+    if (r.kind === 'relic') {
+      var purpose = st.purpose ? '\n' + mtTip(String(st.purpose).slice(0, 200)) : '';
+      return i18n.t('tip.relic', { by: String(st.by || '') }) + purpose;
+    }
+    return null;
+  }
+
+  function showTip(r, x, y) {
+    var i18n = I();
+    if (!i18n || !r) { tipEl.style.display = 'none'; return; }
+    var text = resTipText(r);
+    if (!text) { tipEl.style.display = 'none'; return; }
+    tipEl.textContent = text;
+    tipEl.style.display = 'block';
+    var w = tipEl.offsetWidth, h = tipEl.offsetHeight;
+    tipEl.style.left = Math.min(x + 16, window.innerWidth - w - 8) + 'px';
+    tipEl.style.top = Math.max(4, y - 8 - h) + 'px';
+    // 자유문(비문·설명) 번역 완료 후 같은 대상이면 재렌더(FE mtTooltip 패턴)
+    var st = r.state || {};
+    var free = st.epitaph || st.purpose;
+    if (free && i18n.getLocale() !== 'en') {
+      i18n.translateText(i18n.getLocale(), String(free)).then(function (out) {
+        if (out !== free && lastHover === r.id && tipEl.style.display === 'block') {
+          showTip(r, curMouseX, curMouseY);
+        }
+      }).catch(function () {});
+    }
+  }
+
+  // Rust hover 브리지 — 마우스 커서 아래 자원(overlay.rs hover_res)
+  var lastHover = null;
+  tf.onHoverRes = function (id) {
+    lastHover = id;
+    if (id == null) {
+      // 터치 고정(2.5s) 중에는 해제 통보를 무시 — 고정이 우선한다
+      if (Date.now() >= tipLockUntil) tipEl.style.display = 'none';
+      return;
+    }
+    var S = UI() && UI().state;
+    var r = S && S.resMap ? S.resMap[id] : null;
+    if (!r) { tipEl.style.display = 'none'; return; }
+    showTip(r, curMouseX, curMouseY);
+  };
+  // 커서 위치 추적 — Rust 통보 프레임 사이에서도 툴팁이 커서를 따라가게
+  var curMouseX = 0, curMouseY = 0;
+  window.addEventListener('mousemove', function (e) {
+    curMouseX = e.clientX;
+    curMouseY = e.clientY;
+    if (Date.now() >= tipLockUntil && tipEl.style.display === 'block' && lastHover != null) {
+      var S = UI() && UI().state;
+      var r = S && S.resMap ? S.resMap[lastHover] : null;
+      showTip(r, curMouseX, curMouseY);
+    }
+  });
+
+  /** 탭 고정 툴팁(터치) — 2.5s 후 자동 해제(FE pointerdown 패턴). tf-ui.pickAt이 호출. */
+  function showResAt(x, y) {
+    var S = UI() && UI().state;
+    if (!S || !S.resMap) return false;
+    var tx = Math.floor(x), ty = Math.floor(y);
+    var best = null, bestD = 1.44;
+    for (var rid in S.resMap) {
+      var r = S.resMap[rid];
+      var st = r.state || {};
+      if (r.kind === 'hut') {
+        var w = Number.isInteger(st.w) && st.w >= 1 ? st.w : (st.type === 'LONGHOUSE' ? 3 : st.type === 'WAREHOUSE' ? 3 : st.type === 'WINDBREAK' ? 1 : 2);
+        var h = Number.isInteger(st.h) && st.h >= 1 ? st.h : (st.type === 'WAREHOUSE' ? 3 : st.type === 'WINDBREAK' ? 1 : 2);
+        if (tx >= r.x && tx < r.x + w && ty >= r.y && ty < r.y + h) { best = r; break; }
+      } else if (r.kind === 'grave' || r.kind === 'relic') {
+        var d = (r.x + 0.5 - x) * (r.x + 0.5 - x) + (r.y + 0.5 - y) * (r.y + 0.5 - y);
+        if (d < bestD) { bestD = d; best = r; }
+      }
+    }
+    if (!best) return false;
+    showTip(best, curMouseX || window.innerWidth / 2, curMouseY || 120);
+    tipLockUntil = Date.now() + 2500;
+    setTimeout(function () {
+      if (Date.now() >= tipLockUntil - 50) tipEl.style.display = 'none';
+    }, 2550);
+    return true;
+  }
 
   // ═══════════ 미니맵 — 지형 1회 베이크 + 점·뷰포트 + 클릭 점프 ═══════════
   var viewRect = null;   // [cx, cy, w, h] 타일 단위(Rust onOverlay)
@@ -435,4 +650,5 @@
   }, 500);
 
   // 로케일 전환 — 라벨·배지 문자열은 상태 기반이라 다음 갱신에 자동 반영
+  window.TF_WORLD_UI = { showResAt: showResAt };
 })();

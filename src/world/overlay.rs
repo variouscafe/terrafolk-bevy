@@ -14,7 +14,7 @@ use super::camera_rig::CameraRig;
 #[cfg(target_arch = "wasm32")]
 use super::camera_rig::{CAM_PITCH_DEG, VIEW_H};
 use super::villager::Villager;
-use crate::net::apply::LiveAgentTag;
+use crate::net::apply::{LiveAgentTag, LiveResourceTag};
 
 /// 오버레이 앵커 높이(지면 기준 m) — 주민 상단(VILLAGER_H 1.62) 위 여백.
 /// 이름·배지·풍선은 JS가 이 앵커에서 위로 쌓는다.
@@ -147,6 +147,104 @@ fn view_box(zoom: f32, aspect: f32) -> (f32, f32) {
     let half = (ground_v + ground_h) * std::f32::consts::FRAC_1_SQRT_2;
     (half * 2.0, half * 2.0)
 }
+
+/// 자원 호버 — 마우스 커서 아래 상호작용 자원(건물 발판·완공 건물·묘지·유물)을
+/// 판정해 `tf.onHoverRes(id|null)`로 통보한다(§17.78 "누구 집"·비문·발명 설명
+/// 툴팁). 문구 구성은 JS가 TF_UI.state.resMap의 state로 한다 — Rust는 판정만.
+/// 발판은 내부 포함, 나머지는 중심 거리 1.1타일 근접 판정.
+#[allow(clippy::type_complexity)] // Bevy 쿼리 타입 — 호버 대상이 혼합 컴포넌트
+pub fn hover_res(
+    window: Single<&Window>,
+    q_cam: Query<(&Camera, &GlobalTransform), With<Camera3d>>,
+    q_res: Query<(
+        &LiveResourceTag,
+        &Transform,
+        Option<&super::bld::SiteRect>,
+        Option<&super::models::PropRoot>,
+    )>,
+    mut last_id: Local<Option<u32>>,
+) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let _ = (window, q_cam, q_res);
+        *last_id = None; // 네이티브 무동작 — 상태 초기화
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use wasm_bindgen::prelude::*;
+        let Some(cursor) = window.cursor_position() else {
+            if last_id.is_some() {
+                *last_id = None;
+                notify_hover(None);
+            }
+            return;
+        };
+        let Ok((cam, gt)) = q_cam.single() else {
+            return;
+        };
+        let Some(g) = super::camera_input::ground_at(cam, gt, cursor, 0.0) else {
+            if last_id.is_some() {
+                *last_id = None;
+                notify_hover(None);
+            }
+            return;
+        };
+        let (tx, tz) = (g.x.floor() as i32, g.z.floor() as i32);
+        let mut hit: Option<u32> = None;
+        let mut best_d = f32::MAX;
+        for (tag, tr, rect, prop) in &q_res {
+            if let Some(rect) = rect {
+                if rect.contains(tx, tz) {
+                    hit = Some(tag.0);
+                    break;
+                }
+            }
+            let interactive = prop.is_some_and(|p| {
+                matches!(
+                    p.kind,
+                    super::data::PropKind::Grave | super::data::PropKind::Relic
+                )
+            });
+            if interactive {
+                let d = (tr.translation.x - g.x).powi(2) + (tr.translation.z - g.z).powi(2);
+                if d < 1.1 * 1.1 && d < best_d {
+                    best_d = d;
+                    hit = Some(tag.0);
+                }
+            }
+        }
+        if hit != *last_id {
+            *last_id = hit;
+            notify_hover(hit);
+        }
+    }
+}
+
+/// 호버 통보 — tf.onHoverRes(id|null), 없으면 조용히 스킵.
+#[cfg(target_arch = "wasm32")]
+fn notify_hover(id: Option<u32>) {
+    use wasm_bindgen::prelude::*;
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Ok(tf) = js_sys::Reflect::get(&window.into(), &"terrafolk".into()) else {
+        return;
+    };
+    let Ok(f) = js_sys::Reflect::get(&tf, &"onHoverRes".into()) else {
+        return;
+    };
+    if let Ok(f) = f.dyn_into::<js_sys::Function>() {
+        let arg = match id {
+            Some(v) => JsValue::from_f64(v as f64),
+            None => JsValue::NULL,
+        };
+        let _ = f.call1(&tf, &arg);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)] // wasm 빌드에서만 호출되는 스텁
+fn notify_hover(_id: Option<u32>) {}
 
 /// 소수 페이로드 — 화면 px·타일 좌표에 충분한 정밀도(0.1)로 문자열 길이 유지.
 #[cfg(target_arch = "wasm32")]

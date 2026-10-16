@@ -206,17 +206,45 @@ fn cleared_tiles(
     out
 }
 
-/// 자원 stateJson 최소 파싱 — 동물 {alive}·건축 {stage}.
+/// 자원 stateJson 최소 파싱 — 동물 {alive}·건축 {stage,type,w,h,progress}·
+/// 나무 {maturity}(§17.75 다중 타일·성장 단계).
 #[derive(Default, serde::Deserialize)]
 struct ResState {
     #[serde(default)]
     alive: Option<bool>,
     #[serde(default)]
     stage: Option<String>,
+    #[serde(default, rename = "type")]
+    bld_type: Option<String>,
+    #[serde(default)]
+    w: Option<u16>,
+    #[serde(default)]
+    h: Option<u16>,
+    #[serde(default)]
+    progress: Option<f32>,
+    #[serde(default)]
+    maturity: Option<u8>,
 }
 
-/// 서버 kind → (소품 종, 목표 높이). None = 비표시.
-/// 동물은 사냥 사망(alive=false) 시 소멸, 오두막은 건축 단계별 가시화.
+/// 발판 크기 — state.w/h 우선, 레거시 스냅숏은 타입 기본값(FE BLD_SEED_SIZE).
+fn bld_size(state: &ResState, bld_type: &str) -> (u16, u16) {
+    if let (Some(w), Some(h)) = (state.w, state.h)
+        && w >= 1
+        && h >= 1
+    {
+        return (w, h);
+    }
+    match bld_type {
+        "WINDBREAK" => (1, 1),
+        "LONGHOUSE" => (3, 2),
+        "WAREHOUSE" => (3, 3), // §17.81 창고
+        _ => (2, 2),           // HUT·미지 타입
+    }
+}
+
+/// 서버 kind → (소품 종, 목표 높이). None = 비표시(공사 중 hut은 발판 경로).
+/// 동물은 사냥 사망(alive=false) 시 소멸, 나무는 성장 단계(maturity 0..3)별
+/// 종·스케일(FE 4단계 성장), 완공 건물은 타입별 GLB.
 fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind, f32)> {
     match kind {
         "animal" => {
@@ -233,14 +261,44 @@ fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind,
             Some((k, crate::world::models::prop_model(k).0))
         }
         "hut" => {
-            // 단계별 시각화 — 부지/기초=재료, 골조·벽=성장 스케일, 완공=전체
+            // 완공만 GLB — 공사 중(PLANNED~ROOF_READY)은 bld::spawn_site 발판.
             let stage = state.stage.as_deref().unwrap_or("COMPLETED");
-            Some(match stage {
-                "SITE_PREPARED" | "FOUNDATION_READY" => (PropKind::WoodLog, 0.9),
-                "FRAME_READY" => (PropKind::Hut, 4.2 * 0.5),
-                "ENCLOSURE_READY" => (PropKind::Hut, 4.2 * 0.75),
+            if stage != "COMPLETED" {
+                return None;
+            }
+            let bld_type = state.bld_type.as_deref().unwrap_or("HUT");
+            let (k, h) = match bld_type {
+                "WINDBREAK" => (
+                    PropKind::Windbreak,
+                    crate::world::models::prop_model(PropKind::Windbreak).0,
+                ),
+                "LONGHOUSE" => (PropKind::Hut, 4.2 * 1.5),
+                "WAREHOUSE" => (
+                    PropKind::StorageHut,
+                    crate::world::models::prop_model(PropKind::StorageHut).0 * 1.35,
+                ),
                 _ => (PropKind::Hut, 4.2),
-            })
+            };
+            Some((k, h))
+        }
+        "tree" => {
+            // 성장 단계 — 0:묘목(전용 GLB) 1:어린 나무 0.5× 2:반성장 0.78× 3:성목
+            let m = state.maturity.unwrap_or(3).min(3);
+            let pine = species.contains("pine");
+            let k = if m == 0 {
+                PropKind::TreeSapling
+            } else if pine {
+                PropKind::TreePine
+            } else {
+                PropKind::TreeBroadleaf
+            };
+            let (h, _) = crate::world::models::prop_model(k);
+            let scale = match m {
+                1 => 0.5,
+                2 => 0.78,
+                _ => 1.0,
+            };
+            Some((k, h * scale))
         }
         _ => {
             let k = live_prop(kind, species)?;
@@ -269,15 +327,32 @@ fn live_prop(kind: &str, species: &str) -> Option<PropKind> {
 }
 
 /// 자원 상태 서명 — 변화(사망·건축 단계 진행) 감지용.
+/// hut은 정체성 필드(stage·type·w·h)만 — work/progress는 스냅숏마다 변해
+/// 재스폰 깜빡임을 일으키므로 제외하고 진행률은 SiteMeta를 통해 갱신한다.
+/// (동물 x/y는 행 필드라 애초에 서명에 없다 — 배회는 RoamTo로 부드럽게.)
 fn res_sig(r: &super::LiveResource, vis: bool) -> u64 {
     let mut h = 1469598103934665603u64;
-    for b in r.kind.bytes().chain(r.species.bytes()).chain(
-        r.state
+    let mut feed = String::new();
+    if r.kind == "hut" {
+        let st: ResState = r
+            .state
             .as_deref()
-            .unwrap_or("")
-            .bytes()
-            .chain(std::iter::once(if vis { 1 } else { 0 })),
-    ) {
+            .and_then(|s| serde_json::from_str(s).ok())
+            .unwrap_or_default();
+        feed.push_str(st.stage.as_deref().unwrap_or(""));
+        feed.push('|');
+        feed.push_str(st.bld_type.as_deref().unwrap_or(""));
+        feed.push_str(&format!("|{}|{}", st.w.unwrap_or(0), st.h.unwrap_or(0)));
+    } else {
+        feed.push_str(r.state.as_deref().unwrap_or(""));
+    }
+    for b in r
+        .kind
+        .bytes()
+        .chain(r.species.bytes())
+        .chain(feed.bytes())
+        .chain(std::iter::once(if vis { 1 } else { 0 }))
+    {
         h ^= b as u64;
         h = h.wrapping_mul(1099511628211);
     }
@@ -287,6 +362,10 @@ fn res_sig(r: &super::LiveResource, vis: bool) -> u64 {
 /// 자원 상태 서명 컴포넌트 — 변화 시 재스폰 트리거.
 #[derive(Component)]
 pub struct LiveResMeta(pub u64);
+
+/// 동물 배위 목적지(§17.64) — 서버 x/y diff를 재스폰 없이 부드러운 이동으로.
+#[derive(Component)]
+pub struct RoamTo(pub Vec3);
 
 /// 자원 동기화 — 신규 스폰 / 사라진 것·상태 변화(사망·건축 단계) 재스폰.
 #[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 메시·재질은 스폰 직접 주입용
@@ -302,6 +381,8 @@ pub fn sync_resources(
         &LiveResourceTag,
         Option<&LiveResMeta>,
         Option<&crate::world::models::PropRoot>,
+        Option<&mut RoamTo>,
+        Option<&mut crate::world::bld::SiteMeta>,
     )>,
     mut first_log: Local<u32>,
     // 구조물 청소 집합 캐시 — (서명, 3×3 확장 좌표). 매 프레임 재구축(구조물×9
@@ -315,8 +396,10 @@ pub fn sync_resources(
         return;
     };
 
-    // 갱신·제거 — 서명이 바뀌면 despawn(다음 프레임 새 시각으로 재스폰)
-    for (e, tag, meta, _) in &mut q_live {
+    // 갱신·제거 — 서명이 바뀌면 despawn(다음 프레임 새 시각으로 재스폰).
+    // 동물 좌표 이동(§17.64 배회)은 서명과 무관 — RoamTo 목적지만 갱신하고,
+    // 공사 진행률은 SiteMeta에 흘려 발판을 재스폰 없이 바만 움직인다.
+    for (e, tag, meta, _, roam, site) in &mut q_live {
         let Some(r) = frame.resources.iter().find(|r| r.id == tag.0) else {
             commands.entity(e).despawn();
             continue;
@@ -329,7 +412,23 @@ pub fn sync_resources(
         let vis = live_visual(&r.kind, &r.species, &st).is_some();
         let sig = res_sig(r, vis);
         match meta {
-            Some(m) if m.0 == sig => {}
+            Some(m) if m.0 == sig => {
+                if r.kind == "animal" && st.alive != Some(false) {
+                    let ground = world.height_at(r.x as i32, r.y as i32);
+                    let to = Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5);
+                    match roam {
+                        Some(mut rt) => rt.0 = to,
+                        None => {
+                            commands.entity(e).insert(RoamTo(to));
+                        }
+                    }
+                }
+                if r.kind == "hut"
+                    && let Some(mut m) = site
+                {
+                    m.progress = st.progress.unwrap_or(0.0).clamp(0.0, 1.0);
+                }
+            }
             _ => commands.entity(e).despawn(),
         }
     }
@@ -340,7 +439,7 @@ pub fn sync_resources(
         let mut total = 0;
         let mut animals = 0;
         let mut buildings = 0;
-        for (_, _, _, prop) in &q_live {
+        for (_, _, _, prop, _, _) in &q_live {
             total += 1;
             if let Some(p) = prop {
                 if matches!(
@@ -386,7 +485,8 @@ pub fn sync_resources(
     }
     let cleared = &cleared_cache.1;
     // 기존 실체 id 사전 — 신규 판정을 O(N×M) 순회 대신 해시 조회로.
-    let live_ids: std::collections::HashSet<u32> = q_live.iter().map(|(_, t, _, _)| t.0).collect();
+    let live_ids: std::collections::HashSet<u32> =
+        q_live.iter().map(|(_, t, _, _, _, _)| t.0).collect();
     for r in &frame.resources {
         if live_ids.contains(&r.id) {
             continue;
@@ -396,6 +496,102 @@ pub fn sync_resources(
             .as_deref()
             .and_then(|s| serde_json::from_str(s).ok())
             .unwrap_or_default();
+        if world.terrain_at(r.x as i32, r.y as i32) == "water" {
+            continue;
+        }
+        // ── hut — 다중 타일 발판(§17.75)·창불(§17.78). 서버 앵커=좌상단 타일,
+        //    표현은 발판 중심. 공사 중=절차 발판(말뚝·밧줄·링·진행 바·재료),
+        //    완공=타입별 GLB + 발판 안 주민 점등 창불.
+        if r.kind == "hut" {
+            let bld_type = st.bld_type.clone().unwrap_or_else(|| "HUT".into());
+            let (w, h) = bld_size(&st, &bld_type);
+            let stage = st.stage.clone().unwrap_or_else(|| "COMPLETED".into());
+            let cx = r.x as f32 + w as f32 / 2.0;
+            let cz = r.y as f32 + h as f32 / 2.0;
+            let ground = world.height_at(r.x as i32 + w as i32 / 2, r.y as i32 + h as i32 / 2);
+            let sig = res_sig(r, true);
+            let rect = crate::world::bld::SiteRect {
+                x: r.x as i32,
+                y: r.y as i32,
+                w,
+                h,
+            };
+            if stage != "COMPLETED" {
+                let site = crate::world::bld::spawn_site(
+                    &mut commands,
+                    &mut meshes,
+                    &mut std_mats,
+                    r.x as i32,
+                    r.y as i32,
+                    w,
+                    h,
+                    ground,
+                    st.progress.unwrap_or(0.0).clamp(0.0, 1.0),
+                );
+                commands
+                    .entity(site)
+                    .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+                // 재료 더미 — 부지 준비 단계의 장작(FE SITE_PREPARED 재료 표현)
+                let log_h = crate::world::models::prop_model(PropKind::WoodLog).0 * 0.9;
+                let pile = commands
+                    .spawn((
+                        crate::world::models::PropRoot {
+                            kind: PropKind::WoodLog,
+                            target_h: log_h,
+                            ground_y: ground,
+                            rot_y: (r.id % 360) as f32 / 360.0 * std::f32::consts::TAU,
+                            scale_jitter: 1.0,
+                            variants: crate::world::models::prop_model(PropKind::WoodLog).1,
+                        },
+                        bevy::world_serialization::WorldAssetRoot(
+                            crate::world::models::prop_scene(PropKind::WoodLog, &assets),
+                        ),
+                        Transform::from_translation(Vec3::new(
+                            r.x as f32 + 0.35,
+                            ground,
+                            r.y as f32 + 0.35,
+                        )),
+                    ))
+                    .id();
+                commands
+                    .entity(pile)
+                    .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+            } else if let Some((kind, target_h)) = live_visual(&r.kind, &r.species, &st) {
+                let b = commands
+                    .spawn((
+                        crate::world::models::PropRoot {
+                            kind,
+                            target_h,
+                            ground_y: ground,
+                            rot_y: (r.id % 4) as f32 * std::f32::consts::FRAC_PI_2,
+                            scale_jitter: 1.0,
+                            variants: crate::world::models::prop_model(kind).1,
+                        },
+                        bevy::world_serialization::WorldAssetRoot(
+                            crate::world::models::prop_scene(kind, &assets),
+                        ),
+                        LiveResourceTag(r.id),
+                        LiveResMeta(sig),
+                        Transform::from_translation(Vec3::new(cx, ground, cz)),
+                    ))
+                    .id();
+                let glow = crate::world::bld::spawn_window_glow(
+                    &mut commands,
+                    &mut meshes,
+                    &mut std_mats,
+                    rect,
+                    cx,
+                    cz,
+                    ground,
+                    target_h,
+                );
+                commands
+                    .entity(glow)
+                    .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+                let _ = b;
+            }
+            continue;
+        }
         let Some((kind, target_h)) = live_visual(&r.kind, &r.species, &st) else {
             continue;
         };
@@ -412,27 +608,48 @@ pub fn sync_resources(
         }
         let vis = true;
         let sig = res_sig(r, vis);
-        if world.terrain_at(r.x as i32, r.y as i32) == "water" {
-            continue;
-        }
         let ground = world.height_at(r.x as i32, r.y as i32);
         let variants = crate::world::models::prop_model(kind).1;
-        commands.spawn((
-            crate::world::models::PropRoot {
-                kind,
-                target_h,
-                ground_y: ground,
-                rot_y: (r.id % 360) as f32 / 360.0 * std::f32::consts::TAU,
-                scale_jitter: 1.0,
-                variants,
-            },
-            bevy::world_serialization::WorldAssetRoot(crate::world::models::prop_scene(
-                kind, &assets,
-            )),
-            LiveResourceTag(r.id),
-            LiveResMeta(sig),
-            Transform::from_translation(Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5)),
-        ));
+        let e = commands
+            .spawn((
+                crate::world::models::PropRoot {
+                    kind,
+                    target_h,
+                    ground_y: ground,
+                    rot_y: (r.id % 360) as f32 / 360.0 * std::f32::consts::TAU,
+                    scale_jitter: 1.0,
+                    variants,
+                },
+                bevy::world_serialization::WorldAssetRoot(crate::world::models::prop_scene(
+                    kind, &assets,
+                )),
+                LiveResourceTag(r.id),
+                LiveResMeta(sig),
+                Transform::from_translation(Vec3::new(r.x as f32 + 0.5, ground, r.y as f32 + 0.5)),
+            ))
+            .id();
+        // 유물 — 지면 위 부유+자전(주민 시선 유도, FE 아이콘 sin 트윈)
+        if kind == PropKind::Relic {
+            commands.entity(e).insert(crate::world::propsfx::FloatBob {
+                base_y: ground + 0.22,
+                phase: (r.id % 628) as f32 / 100.0,
+            });
+        }
+        // 광맥 — 귀한 자원 점멸 스파크(FE spark, 위상은 id로 결정론 분산)
+        if kind == PropKind::GoldVein {
+            let spark = crate::world::propsfx::spawn_vein_spark(
+                &mut commands,
+                &mut meshes,
+                &mut std_mats,
+                r.x as f32 + 0.5,
+                ground,
+                r.y as f32 + 0.5,
+                (r.id % 628) as f32 / 100.0,
+            );
+            commands
+                .entity(spark)
+                .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+        }
         // 모닥불 — 발광 불꽃·라이트는 PropRoot와 별도 엔티티(데모 경로와 공통 헬퍼).
         // 동일 동기화 태그+서명 부여로 제거·상태변화 시 모델과 함께 철거·재생성.
         if kind == crate::world::data::PropKind::Campfire {
@@ -450,6 +667,30 @@ pub fn sync_resources(
             commands
                 .entity(glow)
                 .insert((LiveResourceTag(r.id), LiveResMeta(sig)));
+        }
+    }
+}
+
+/// 동물 배위 이동(§17.64) — RoamTo 목적지로 등속 보간 + 이동 방향 바라보기.
+/// FE의 좌우 반환 이동에 해당하는 3D 환 — 재스폰 깜빡임 없이 자연스럽게 걷는다.
+pub fn live_res_move(time: Res<Time>, mut q: Query<(&RoamTo, &mut Transform)>) {
+    const SPEED: f32 = 0.6; // 타일/초 — 배위 동물은 주민보다 느리게
+    let dt = time.delta_secs();
+    for (to, mut tr) in &mut q {
+        let dx = to.0.x - tr.translation.x;
+        let dz = to.0.z - tr.translation.z;
+        let dist = (dx * dx + dz * dz).sqrt();
+        if dist < 1e-4 {
+            continue;
+        }
+        let step = SPEED * dt;
+        if dist <= step {
+            tr.translation.x = to.0.x;
+            tr.translation.z = to.0.z;
+        } else {
+            tr.translation.x += dx / dist * step;
+            tr.translation.z += dz / dist * step;
+            tr.rotation = Quat::from_rotation_y(dx.atan2(dz));
         }
     }
 }

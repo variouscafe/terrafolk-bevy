@@ -1739,6 +1739,9 @@
   // ── Rust 픽 브리지 — 빈 땅 클릭 좌표로 유물 카드(§17.38).
   //    주민 픽킹은 Rust pick.rs가直接 하고 tf.onPickAgent로 돌아온다.
   function pickAt(x, y) {
+    // 건물·묘지 탭 툴팁(§17.78 — 터치 고정 2.5s) — tf-world-ui가 판정·표시.
+    // 유물 카드보다 우선(발판 안 클릭은 집 안내가 우선).
+    if (window.TF_WORLD_UI && window.TF_WORLD_UI.showResAt(x, y)) return;
     var bestR = null, bestRd = 4;
     Object.keys(S.resMap).forEach(function (rid) {
       var r = S.resMap[rid];

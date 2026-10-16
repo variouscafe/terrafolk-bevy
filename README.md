@@ -31,7 +31,9 @@ trunk serve                  # 웹(:8080, 핫리로드)
 | `src/world/villager.rs` | 4방향×4프레임 보행·배회(W계 미러) |
 | `src/world/camera_rig.rs` | 45° 저FOV 아이소 카메라 |
 | `src/world/pick.rs` | 주민 클릭/탭 픽킹 + 발밑 선택 링 + JS 브리지(`tf.selectAgent`⇄`tf.onPickAgent`, 유물 `tf.uiPick`) |
-| `src/world/overlay.rs` | 월드 앵커 투영 피드(`tf.onOverlay` — 말풍선·라벨·배지·미니맵 공용) + 미니맵 점프 `tf.panTo` |
+| `src/world/overlay.rs` | 월드 앵커 투영 피드(`tf.onOverlay` — 말풍선·라벨·배지·미니맵 공용) + 미니맵 점프 `tf.panTo` + 자원 호버 `tf.onHoverRes` |
+| `src/world/bld.rs` | 건축 발판(§17.75) — 다중 타일 말뚝·밧줄·공사 링 펄스·진행 바·재료 더미, 완공 창불(§17.78) |
+| `src/world/propsfx.rs` | 유물 부유+자전·광맥 점멸 스파크(Bloom 점멸) |
 | `src/world/cam_follow.rs` | 선택 주민 카메라 추적(FE camera-follow) — 수동 팬 입력 시 해제 |
 
 ## DOM UI 오버레이(☰ 메뉴·팝업)
@@ -48,6 +50,8 @@ FE(React) worldsim 화면의 바닐라 JS 포트 — 빌드 도구 없이 trunk�
 - `assets/web/tf-data.js` — **자동 생성**(수동 편집 금지): `node tools/gen-web-data.mjs`
   가 `../terrafolk` 정본(i18n 사전·vocab·이벤트 템플릿·LPC 풀·크레딧)에서 생성.
   FE 사전이 바뀌면 재실행(`--skip-lpc`로 PNG 복사 생략 가능).
+- `src/net/apply.rs` — 자원 동기 확장: 동물 배위 보간(RoamTo, §17.64)·
+  나무 성장 4단계(maturity)·건축 발판(w×h·stage·progress, §17.75).
 - `assets/web/worldsim.js` — 룸 접속(colyseus.js) + OAuth 인증(fragment 캡처·
   rt 갱신) + 스냅숏 상세(needs/goal/inventory/inventions)을 Rust sink와
   TF_UI.feed로 이중 분배. 백오프 재접속·탭 복귀 즉시 재시도.
@@ -56,7 +60,9 @@ FE(React) worldsim 화면의 바닐라 JS 포트 — 빌드 도구 없이 trunk�
   §17.81 포함, TF_UI 상태를 500ms 폴로 표현).
 - `assets/web/tf-world-ui.js` — 월드 앵커 오버레이(FE scene/agents.ts 포트):
   이름 라벨(저줌 숨김)·말풍선(§17.44)·활동 진행 링+아이콘·수면 zZz·욕구 ❗·
-  하이라이트 토스트(feed.event wrap→highlightOf)·미니맵(클릭 점프).
+  하이라이트 토스트(feed.event wrap→highlightOf)·미니맵(클릭 점프)·
+  계절 틴트·번개 섬꼉(storm)·사망 🕯 연출·자원 툴팁(§17.78 누구 집·묘지
+  비문·유물 설명 — 마우스 호버/터치 탭 고정 2.5s).
 - `functions/auth/{google,kakao}*` — OAuth Pages 함수(FE repo에서 복사).
   배포 OAuth 콘솔에 `terrafolk-rust.pages.dev/auth/*/callback` 리다이렉트
   URI 등록이 필요하다.

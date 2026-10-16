@@ -89,6 +89,7 @@ impl Plugin for WorldPlugin {
                 ),
                 villager::wander,
                 villager::animate_walk_idle,
+                villager::retry_villager_setup,
                 villager::villager_render_probe,
                 (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
                 occlusion::conceal_occluders,

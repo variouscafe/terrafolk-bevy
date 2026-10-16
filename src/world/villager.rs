@@ -95,14 +95,20 @@ pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Re
     }
 }
 
-/// 씬 스폰 완료 — 애니메이션 그래프 연결 + 오토펏 + 틴트.
-#[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 준비 관찰자 인자
+/// 스폰 완료 보장 마커 — finish_villager_setup이 아직 못 끝낸 주민.
+/// 무음 early-return이 애님+오토핏을 영구 누락시켜 원시 스케일 유령(2026-10-17
+/// 신규 합류 주민 '테린' 사례 — 화면에 아예 안 보임)을 낳는다. 재시도로 보장한다.
+#[derive(Component)]
+pub struct VillagerPending(pub f32);
+
+/// 씬 스폰 완료 — 애니메이션 그래프 연결 + 오토펏. 자산 비동기 로드로 아직
+/// 못 끝내면 VillagerPending을 남기고, retry_villager_setup이 완결한다.
 pub fn villager_ready(
     trigger: On<WorldInstanceReady>,
     mut commands: Commands,
     q_self: Query<(&Villager, &VillagerModel, &Transform)>,
     children: Query<&Children>,
-    players: Query<(Entity, &mut AnimationPlayer)>,
+    mut players: Query<(Entity, &mut AnimationPlayer)>,
     q_walk: super::models::FitQuery,
     gltfs: Res<Assets<Gltf>>,
     mut graphs: ResMut<Assets<AnimationGraph>>,
@@ -112,8 +118,92 @@ pub fn villager_ready(
     let Ok((villager, model, tr)) = q_self.get(trigger.entity) else {
         return;
     };
+    let done = finish_villager_setup(
+        trigger.entity,
+        villager,
+        model,
+        tr,
+        &mut commands,
+        &children,
+        &mut players,
+        &q_walk,
+        &gltfs,
+        &mut graphs,
+        &meshes,
+        &world,
+    );
+    if !done {
+        commands.entity(trigger.entity).insert(VillagerPending(0.0));
+    }
+}
+
+/// 스폰 완료 재시도 — Gltf·클립·AnimationPlayer가 비동기로 늦게 도착하는
+/// 경합을 매 프레임 재시도로 흡수(성공 시 마커 제거, 60s 포기).
+pub fn retry_villager_setup(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut q: Query<(
+        Entity,
+        &Villager,
+        &VillagerModel,
+        &Transform,
+        &mut VillagerPending,
+    )>,
+    children: Query<&Children>,
+    mut players: Query<(Entity, &mut AnimationPlayer)>,
+    q_walk: super::models::FitQuery,
+    gltfs: Res<Assets<Gltf>>,
+    mut graphs: ResMut<Assets<AnimationGraph>>,
+    meshes: Res<Assets<Mesh>>,
+    world: Res<super::data::WorldData>,
+) {
+    for (entity, villager, model, tr, mut pending) in &mut q {
+        pending.0 += time.delta_secs();
+        if pending.0 > 60.0 {
+            warn!("[villager] 스폰 완료 실패(60s) — 포기 {:?}", model.0.path());
+            commands.entity(entity).remove::<VillagerPending>();
+            continue;
+        }
+        let done = finish_villager_setup(
+            entity,
+            villager,
+            model,
+            tr,
+            &mut commands,
+            &children,
+            &mut players,
+            &q_walk,
+            &gltfs,
+            &mut graphs,
+            &meshes,
+            &world,
+        );
+        if done {
+            info!("[villager] 스폰 완료 재시도 성공 (+{:.1}s)", pending.0);
+            commands.entity(entity).remove::<VillagerPending>();
+        }
+    }
+}
+
+/// 주민 씬 완결 공용 본체 — 애님 그래프·크로스페이드 시작·오토펏.
+/// Gltf/클립/플레이어 미준비면 false(호출처가 재시도 마커 처리).
+#[allow(clippy::too_many_arguments)] // 옵저버·재시도 양쪽이 같은 자산 집합을 주입
+fn finish_villager_setup(
+    entity: Entity,
+    villager: &Villager,
+    model: &VillagerModel,
+    tr: &Transform,
+    commands: &mut Commands,
+    children: &Query<&Children>,
+    players: &mut Query<(Entity, &mut AnimationPlayer)>,
+    q_walk: &super::models::FitQuery,
+    gltfs: &Assets<Gltf>,
+    graphs: &mut Assets<AnimationGraph>,
+    meshes: &Assets<Mesh>,
+    world: &super::data::WorldData,
+) -> bool {
     let Some(gltf) = gltfs.get(&model.0) else {
-        return; // 아직 로딩 — WorldAsset은 Gltf 처리 후 준비되므로 실제로는 도달 드묾
+        return false; // Gltf 아직 로딩 — 재시도로 흡수
     };
     // Walk/Idle 클립 검색 — 접미 매칭(프리픽스는 모델별 상이)
     let find = |suffix: &str| {
@@ -123,7 +213,7 @@ pub fn villager_ready(
             .map(|(_, h)| h.clone())
     };
     let (Some(walk_h), Some(idle_h)) = (find("Walk"), find("Idle")) else {
-        return;
+        return false;
     };
     let mut graph = AnimationGraph::new();
     let walk_i = graph.add_clip(walk_h, 1.0, graph.root);
@@ -132,16 +222,16 @@ pub fn villager_ready(
 
     // 하위 AnimationPlayer 탐색(bevy_gltf가 자동 스폰)
     let mut player_e = None;
-    for child in children.iter_descendants(trigger.entity) {
+    for child in children.iter_descendants(entity) {
         if players.get(child).is_ok() {
             player_e = Some(child);
             break;
         }
     }
     let Some(player_e) = player_e else {
-        return;
+        return false; // 플레이어 아직 스폰 전 — 재시도로 흡수
     };
-    if let Ok((_, player)) = players.get(player_e) {
+    if let Ok((_, player)) = players.get_mut(player_e) {
         let mut player = player.clone();
         // AnimationTransitions — 크로스페이드 주체(재생은 이 컴포넌트 경유로만).
         let mut transitions = AnimationTransitions::default();
@@ -157,7 +247,7 @@ pub fn villager_ready(
     // 오토펏 — 서브트리 전체 메시의 결합 AABB(조상 체인 행렬)로 스케일·착지.
     // GLB 루트 직속 자식엔 메시가 없고 Armature 아래 깊이 있으므로 재귀 수집.
     let mut measure: Vec<Entity> = Vec::new();
-    for child in children.iter_descendants(trigger.entity) {
+    for child in children.iter_descendants(entity) {
         if q_walk
             .get(child)
             .map(|(_, _, m, _, _)| m.is_some())
@@ -166,7 +256,7 @@ pub fn villager_ready(
             measure.push(child);
         }
     }
-    if let Some((mn, mx)) = super::models::meshes_aabb(&measure, trigger.entity, &q_walk, &meshes) {
+    if let Some((mn, mx)) = super::models::meshes_aabb(&measure, entity, q_walk, meshes) {
         let size = (mx - mn).max(Vec3::splat(1e-4));
         let s = (villager.target_h / size.y).clamp(0.05, 50.0);
         // 착지 기준은 현재 위치의 지면 — 씬 로딩 사이 배회로 스폰점에서
@@ -178,14 +268,15 @@ pub fn villager_ready(
         let mut fitted = *tr;
         fitted.translation.y = ground - mn.y * s;
         fitted.scale = Vec3::splat(s);
-        commands.entity(trigger.entity).insert(fitted);
+        commands.entity(entity).insert(fitted);
     }
-    commands.entity(trigger.entity).insert(VillagerAnims {
+    commands.entity(entity).insert(VillagerAnims {
         walk: walk_i,
         idle_anim: idle_i,
         player_e,
         current_walk: false,
     });
+    true
 }
 
 /// 진단 — 주민 렌더 상태 덤프(유령 디버깅): 스폰 8초 후 1회.

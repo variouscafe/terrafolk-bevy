@@ -37,7 +37,10 @@ impl Material for WaterMaterial {
         "shaders/water.wgsl".into()
     }
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Blend
+        // WebGL2 방어 — 이 재질은 유니폼 5개라 Blend(alpha_blend 파이프라인)면
+        // 프래그먼트 유니폼 한도(12) 초과로 앱이 종료된다. 불투명 수면 +
+        // 셰이더 프레넬·포말로 표현(바닥 투과는 포기 — materials_guard 참조).
+        AlphaMode::Opaque
     }
 }
 

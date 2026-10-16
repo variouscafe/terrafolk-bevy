@@ -6,6 +6,7 @@ pub mod camera_input;
 pub mod camera_rig;
 pub mod data;
 pub mod daynight;
+pub mod materials_guard;
 pub mod models;
 pub mod occlusion;
 pub mod pick;
@@ -23,16 +24,15 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
+        materials_guard::nonfatal_render_errors(app);
         app.add_plugins(bevy::pbr::MaterialPlugin::<water::WaterMaterial>::default());
         app.init_asset::<water::WaterMaterial>();
         app.add_plugins(MaterialPlugin::<splat::TerrainMaterial>::default());
         app.add_plugins(MaterialPlugin::<wind::WindMaterial>::default());
-        app.add_plugins(MaterialPlugin::<precip::PrecipMaterial>::default());
-        app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
+                app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
             .insert_resource(precip::WeatherState::default())
-            .insert_resource(precip::PrecipRig::default())
             .insert_resource(camera_rig::CameraRig::default())
             .insert_resource(camera_input::PointerInput::default())
             .insert_resource(pick::Selection::default())
@@ -62,12 +62,14 @@ impl Plugin for WorldPlugin {
         );
         app.add_systems(
             Update,
+            materials_guard::guard_blend_materials,
+        );
+        app.add_systems(
+            Update,
             (
                 camera_rig::camera_control,
                 daynight::advance_time,
                 daynight::apply_sky,
-                precip::attach_precip,
-                precip::sync_precip,
                 models::fit_props,
                 models::apply_fit,
                 wind::apply_wind,
@@ -75,7 +77,7 @@ impl Plugin for WorldPlugin {
                 villager::wander,
                 villager::animate_walk_idle,
                 (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
-                occlusion::fade_occluders,
+                occlusion::conceal_occluders,
                 cam_follow::follow_camera,
                 debug_screenshot,
             ),

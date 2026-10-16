@@ -6,11 +6,11 @@
 
 use bevy::camera::ScalingMode;
 use bevy::core_pipeline::tonemapping::DebandDither;
+use bevy::post_process::bloom::Bloom;
+use bevy::render::view::ColorGrading;
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::AccumulatedMouseScroll;
-use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::view::ColorGrading;
 
 use super::camera_input::{PointerInput, ground_at};
 use super::data::WorldData;
@@ -91,9 +91,8 @@ pub fn spawn_camera(mut commands: Commands) {
         Camera3d::default(),
         ortho_projection(),
         tr,
-        // 후처리 — DebandDither(하늘 그라데이션 밴딩 제거, 웹 특히 유효),
-        // ColorGrading(daynight::apply_sky가 하루·날씨 무드로 구동),
-        // Bloom(NATURAL — 모닥불 불꽃 등 발광체 번짐. Hdr 자동 요구).
+        // 후처리 — DebandDither(하늘 밴딩 제거), ColorGrading(무드),
+        // Bloom(모닥불 불꽃 번짐).
         DebandDither::Enabled,
         ColorGrading::default(),
         Bloom::NATURAL,

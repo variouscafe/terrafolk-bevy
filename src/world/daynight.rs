@@ -86,19 +86,19 @@ pub fn apply_sky(
         tr.look_at(Vec3::ZERO, Vec3::Y);
     }
 
-    const NOON: [f32; 3] = [1.0, 0.95, 0.88];
-    const DUSK: [f32; 3] = [1.0, 0.58, 0.34];
+    const NOON: [f32; 3] = [1.0, 0.9, 0.76];
+    const DUSK: [f32; 3] = [1.0, 0.55, 0.30];
     const MOON: [f32; 3] = [0.52, 0.62, 0.85];
     // ── 날씨 — 조도 감쇠·탈포화 계수(§17.39 clear|overcast|rain|storm|snow|fog)
     let (dim, gray, cool) = weather.sky_mix();
     if let Ok(mut light) = light_q.single_mut() {
         let c = lerp3(lerp3(NOON, DUSK, dusk_w), MOON, night);
         light.color = Color::srgb(c[0], c[1], c[2]);
-        light.illuminance = 26000.0 * (1.0 - night * 0.9) * dim;
+        light.illuminance = 21000.0 * (1.0 - night * 0.9) * dim;
     }
 
-    const SKY_DAY: [f32; 3] = [0.48, 0.71, 0.92];
-    const SKY_DUSK: [f32; 3] = [0.62, 0.44, 0.38];
+    const SKY_DAY: [f32; 3] = [0.60, 0.78, 0.95];
+    const SKY_DUSK: [f32; 3] = [0.66, 0.46, 0.36];
     const SKY_NIGHT: [f32; 3] = [0.04, 0.055, 0.12];
     let mut sky = lerp3(lerp3(SKY_DAY, SKY_DUSK, dusk_w), SKY_NIGHT, night);
 
@@ -108,10 +108,10 @@ pub fn apply_sky(
     sky = lerp3(sky, [0.74, 0.79, 0.9], cool);
 
     clear.0 = Color::srgb(sky[0], sky[1], sky[2]);
-    ambient.brightness = (55.0 + (1.0 - night) * 150.0) * (0.55 + 0.45 * dim);
+    ambient.brightness = (70.0 + (1.0 - night) * 160.0) * (0.55 + 0.45 * dim);
     ambient.color = Color::srgb(
-        lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[0],
-        lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[1],
-        lerp3([1.0, 0.98, 0.94], [0.45, 0.55, 0.85], night)[2],
+        lerp3([1.0, 0.96, 0.88], [0.45, 0.55, 0.85], night)[0],
+        lerp3([1.0, 0.96, 0.88], [0.45, 0.55, 0.85], night)[1],
+        lerp3([1.0, 0.96, 0.88], [0.45, 0.55, 0.85], night)[2],
     );
 }

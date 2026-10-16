@@ -7,16 +7,18 @@ body, html {
 }
 
 body {
-    background-color: lightgray;
+    background-color: #79a8d4;
     margin: 0;
     display: flex;
     justify-content: center;
     align-items: center;
 }
 
+/* 풀스크린 캔버스 — 참조 스타일(정사영 3/4 뷰가 화면을 채운다).
+   dvh: 모바일 주소창 수축 대응. */
 .game-container {
-    width: 800px;
-    height: 600px;
+    width: 100vw;
+    height: 100dvh;
     display: flex;
     justify-content: center;
     align-items: center;

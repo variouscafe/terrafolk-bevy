@@ -25,6 +25,7 @@ pub fn prime_live_world(
     q_props: Query<Entity, With<crate::world::models::PropRoot>>,
     q_villagers: Query<Entity, With<crate::world::villager::Villager>>,
     mut world: ResMut<WorldData>,
+    mut cam_rig: ResMut<crate::world::camera_rig::CameraRig>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut water_mats: ResMut<Assets<crate::world::water::WaterMaterial>>,
     mut images: ResMut<Assets<Image>>,
@@ -61,8 +62,10 @@ pub fn prime_live_world(
         commands.entity(e).despawn();
     }
 
-    // 라이브 데이터로 교체 — GID 그리드, 평면 고도
+    // 라이브 데이터로 교체 — GID 그리드, 릴리프 합성
     *world = WorldData::from_map(&map.layers[0].data, map.width, map.height);
+    // 카메라 재중심 — 데모 중심 타깃이 라이브 맵 구석을 비추지 않게(마을=맵 중심 광장)
+    cam_rig.target = Vec2::splat(world.size as f32 / 2.0);
 
     crate::world::terrain::spawn_live_terrain(
         &mut commands,
@@ -78,6 +81,8 @@ pub fn prime_live_world(
         &mut water_mats,
         &mut images,
     );
+    // 장식 산포 — GID 기반 결정론(꽃·풀·자갈). 서버 자원 아님(순수 클라이언트 투영).
+    crate::world::models::spawn_decorative_props(&mut commands, &world, &assets);
 
     // map은 1회 소비(이후 프레임에서 중복 파싱 방지)
     net.frame = Some(LiveFrame {
@@ -140,9 +145,9 @@ fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind,
             let stage = state.stage.as_deref().unwrap_or("COMPLETED");
             Some(match stage {
                 "SITE_PREPARED" | "FOUNDATION_READY" => (PropKind::WoodLog, 0.9),
-                "FRAME_READY" => (PropKind::Hut, 3.4 * 0.5),
-                "ENCLOSURE_READY" => (PropKind::Hut, 3.4 * 0.75),
-                _ => (PropKind::Hut, 3.4),
+                "FRAME_READY" => (PropKind::Hut, 4.2 * 0.5),
+                "ENCLOSURE_READY" => (PropKind::Hut, 4.2 * 0.75),
+                _ => (PropKind::Hut, 4.2),
             })
         }
         _ => {
@@ -236,22 +241,29 @@ pub fn sync_resources(
     if *first_log == 2 {
         let mut total = 0;
         let mut animals = 0;
+        let mut buildings = 0;
         for (_, _, _, prop) in &q_live {
             total += 1;
-            if let Some(p) = prop
-                && matches!(
+            if let Some(p) = prop {
+                if matches!(
                     p.kind,
                     PropKind::AnimalBoar
                         | PropKind::AnimalDeer
                         | PropKind::AnimalWaterDeer
                         | PropKind::AnimalSquirrel
                         | PropKind::AnimalPheasant
-                )
-            {
-                animals += 1;
+                ) {
+                    animals += 1;
+                }
+                if matches!(
+                    p.kind,
+                    PropKind::Hut | PropKind::StorageHut | PropKind::Tent
+                ) {
+                    buildings += 1;
+                }
             }
         }
-        info!("[net] 라이브 자원 실체 {total}개 (동물 {animals})");
+        info!("[net] 라이브 자원 실체 {total}개 (동물 {animals}·건물 {buildings})");
     }
     for r in &frame.resources {
         if q_live.iter().any(|(_, t, _, _)| t.0 == r.id) {

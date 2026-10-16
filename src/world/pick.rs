@@ -294,7 +294,6 @@ fn notify_ground(_x: f32, _z: f32) {}
 pub fn ui_typing() -> bool {
     #[cfg(target_arch = "wasm32")]
     {
-        use wasm_bindgen::prelude::*;
         web_sys::window()
             .and_then(|w| js_sys::Reflect::get(&w.into(), &"terrafolk".into()).ok())
             .and_then(|tf| js_sys::Reflect::get(&tf, &"uiTyping".into()).ok())

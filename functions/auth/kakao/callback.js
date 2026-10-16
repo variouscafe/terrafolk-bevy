@@ -40,7 +40,8 @@ export async function onRequestGet(context) {
     return new Response('Kakao login service unavailable', { status: 502 });
   }
   if (!res.ok) {
-    const retryHref = next || '/login';
+    // 이 클라이언트엔 /login 라우트가 없다(로그인 UI=계정 팝업) — 루트로
+    const retryHref = next || '/';
     let errorCode = '';
     try {
       errorCode = ((await res.json().catch(() => null)) || {}).error?.code ?? '';

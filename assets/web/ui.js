@@ -219,26 +219,35 @@
         rows.forEach(function (r) { live[r.agent_id + '|' + r.text] = 1; });
         var back = list.filter(function (r) {
           return !live[r.agent_id + '|' + r.text];
-        }).slice(-MAX_ROWS);
+        }).slice(-MAX_ROWS).map(function (r) {
+          // 백로그 행 정규화 — 백엔드 game_min을 gmin으로(FE §17.37 규약)
+          return { agent_id: r.agent_id, speaker: r.speaker, text: r.text,
+            text_en: r.text_en, lang: r.lang,
+            gmin: r.game_min != null ? r.game_min : null, ts: r.ts };
+        });
         rows = back.concat(rows).slice(-MAX_ROWS);
         renderLog();
       })
       .catch(function () { backlogTried = false; });
   }
 
-  // ── 실시간 수신 — 에코 확정(§17.55 라이트) 후 로그·헤드 갱신
+  // ── 실시간 수신 — 에코 확정(§17.55): pending 행을 서버 행으로 치환(이중 렌더 방지)
   tf.ui.onChatRow(function (m) {
+    var echo = null;
     for (var i = 0; i < rows.length; i++) {
       var p = rows[i];
-      if (p.pending && p.mine && p.agent_id === m.agent_id && p.text === m.text) {
+      if (!echo && p.pending && p.mine && p.agent_id === m.agent_id && p.text === m.text) {
         p.pending = false;
         p.gmin = m.gmin;
-        break;
+        p.ts = new Date().toISOString();
+        echo = p;
       }
     }
-    rows.push({ agent_id: m.agent_id, speaker: m.speaker, text: m.text,
-      text_en: m.text_en, lang: m.lang, gmin: m.gmin,
-      ts: new Date().toISOString() });
+    if (!echo) {
+      rows.push({ agent_id: m.agent_id, speaker: m.speaker, text: m.text,
+        text_en: m.text_en, lang: m.lang, gmin: m.gmin,
+        ts: new Date().toISOString() });
+    }
     if (rows.length > MAX_ROWS) rows.splice(0, rows.length - MAX_ROWS);
     if (logOpen) renderLog();
     if (m.agent_id === sel) renderHead();
@@ -276,6 +285,12 @@
     if (e.key === 'Enter') { e.preventDefault(); send(); }
     if (e.key === 'Escape') c.input.blur();   // 선택 해제는 캔버스 Escape(Rust)
   });
+
+  // ── 타이핑 플래그 — winit keydown은 window에 붙어 DOM 입력 키도 Bevy에 온다.
+  // Rust(camera_control·cam_follow)가 이 값을 읽고 타이핑 중 팬/줌/추적 해제를 막는다
+  tf.uiTyping = false;
+  c.input.addEventListener('focus', function () { tf.uiTyping = true; });
+  c.input.addEventListener('blur', function () { tf.uiTyping = false; });
 
   // ── 모바일 키보드 — visualViewport로 독을 키보드 위에 고정
   var vv = window.visualViewport;

@@ -1288,13 +1288,16 @@
     if (!E || E.busy) return;
     E.busy = true;
     schedule();
-    // 옷 슬롯은 wears가 관장 — 수동 parts의 옷 잔존값은 정리해 파생이 우선하게
+    // 옷 슬롯은 wears가 관장 — 수동 parts의 옷 잔존값은 정리해 파생이 우선하게.
+    // wears는 에디터 선택(E.wears, 미지정 슬롯=auto 초기화)을 그대로 — 하드코딩
+    // auto면 사용자 선택·기존 저장값이 전부 지워진다(FE LookEditor 규약)
     var partsOut = Object.assign({}, E.parts);
     ['top', 'topColor', 'bottom', 'bottomColor', 'feet', 'feetColor'].forEach(function (k) { delete partsOut[k]; });
+    var wearsOut = { top: E.wears.top || 'auto', bottom: E.wears.bottom || 'auto', feet: E.wears.feet || 'auto' };
     authFetch('/api/worldsim/agents/' + encodeURIComponent(E.agentId) + '/look', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parts: partsOut, wears: { top: 'auto', bottom: 'auto', feet: 'auto' } }),
+      body: JSON.stringify({ parts: partsOut, wears: wearsOut }),
     }).then(function (r) {
       if (!r.ok) return r.json().then(function (j) { throw new Error(j.message || j.detail || 'save failed'); });
       return r.json();

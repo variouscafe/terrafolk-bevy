@@ -392,7 +392,7 @@ pub fn debug_goto_animal(
     mut rig: ResMut<crate::world::camera_rig::CameraRig>,
     q: Query<(&Transform, &crate::world::models::PropRoot), With<LiveResourceTag>>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyG) {
+    if !keys.just_pressed(KeyCode::KeyG) || crate::world::pick::ui_typing() {
         return;
     }
     for (tr, prop) in &q {

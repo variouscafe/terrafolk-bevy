@@ -124,7 +124,7 @@ pub fn sync_precip(
     mut q_vis: Query<&mut Visibility, With<PrecipQuad>>,
 ) {
     const CYCLE: [&str; 6] = ["clear", "rain", "storm", "snow", "overcast", "fog"];
-    if keys.just_pressed(KeyCode::KeyR) {
+    if keys.just_pressed(KeyCode::KeyR) && !super::pick::ui_typing() {
         let i = CYCLE.iter().position(|c| *c == weather.kind).unwrap_or(0);
         weather.kind = CYCLE[(i + 1) % CYCLE.len()].to_string();
         info!("[precip] 날씨 → {}", weather.kind);

@@ -386,8 +386,7 @@ pub fn sync_resources(
     }
     let cleared = &cleared_cache.1;
     // 기존 실체 id 사전 — 신규 판정을 O(N×M) 순회 대신 해시 조회로.
-    let live_ids: std::collections::HashSet<u32> =
-        q_live.iter().map(|(_, t, _, _)| t.0).collect();
+    let live_ids: std::collections::HashSet<u32> = q_live.iter().map(|(_, t, _, _)| t.0).collect();
     for r in &frame.resources {
         if live_ids.contains(&r.id) {
             continue;

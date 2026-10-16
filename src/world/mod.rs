@@ -9,6 +9,7 @@ pub mod daynight;
 pub mod materials_guard;
 pub mod models;
 pub mod occlusion;
+pub mod overlay;
 pub mod pick;
 pub mod precip;
 pub mod splat;
@@ -29,7 +30,7 @@ impl Plugin for WorldPlugin {
         app.init_asset::<water::WaterMaterial>();
         app.add_plugins(MaterialPlugin::<splat::TerrainMaterial>::default());
         app.add_plugins(MaterialPlugin::<wind::WindMaterial>::default());
-                app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
+        app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
             .insert_resource(precip::WeatherState::default())
@@ -38,6 +39,7 @@ impl Plugin for WorldPlugin {
             .insert_resource(pick::Selection::default())
             .insert_resource(pick::SelectBridge::default())
             .insert_resource(cam_follow::CamFollow::default())
+            .insert_resource(overlay::PanBridge::default())
             .add_systems(
                 Startup,
                 (
@@ -45,6 +47,7 @@ impl Plugin for WorldPlugin {
                     daynight::spawn_sun,
                     pick::spawn_ring,
                     pick::register_bridge,
+                    overlay::register_pan_bridge,
                 ),
             );
         // 데모 결정론 월드는 네이티브 개발 빌드 전용 — 웹(wasm)은 라이브 접속→
@@ -60,14 +63,13 @@ impl Plugin for WorldPlugin {
                 villager::spawn_villagers,
             ),
         );
-        app.add_systems(
-            Update,
-            materials_guard::guard_blend_materials,
-        );
+        app.add_systems(Update, materials_guard::guard_blend_materials);
         app.add_systems(
             Update,
             (
+                overlay::apply_pan_to,
                 camera_rig::camera_control,
+                overlay::overlay_feed,
                 daynight::advance_time,
                 daynight::apply_sky,
                 models::fit_props,

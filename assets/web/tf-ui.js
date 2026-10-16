@@ -427,8 +427,7 @@
     if (!sel) {
       return '<div class="tf-select-hint">' + esc(t('panel.select.hint')) + '</div>';
     }
-    var needs = [['needs.hunger', 'hunger'], ['needs.thirst', 'thirst'],
-      ['needs.fatigue', 'fatigue'], ['needs.warmth', 'warmth']].map(function (pair) {
+    var needs = HERO_NEEDS.map(function (pair) {
         var v = Number((sel.needs || {})[pair[1]] != null ? sel.needs[pair[1]] : 0);
         var pct = Math.min(100, v);
         return '<div class="tf-need">' +
@@ -519,22 +518,39 @@
   // (카메라 재추적·대화·상세)은 원클릭. 초상은 LPC walk 시트(64px 프레임)를
   // CSS steps로 애니메이션 — 데이터는 TF_LOOK 캐시가 재사용된다.
   var heroPortraits = {};   // id → dataURL(charSheetUrl 완료 시점 갱신)
+
+  /** 초상 성별 — villager.rs model_path_for와 동일 판정. lookJson.sex는 첫
+   *  글자 F/f=여성, 없으면 id 바이트 해시 홀수=여성(31은 홀수라 u64 래핑
+   *  곱의 패리티는 바이트 패리티 합과 같다) — 3D 모델과 초상이 어긋나지
+   *  않는다. */
+  function heroSexOf(id, look) {
+    if (look && look.sex && String(look.sex).charAt(0)) {
+      return /^[Ff]/.test(String(look.sex)) ? 'female' : 'male';
+    }
+    var p = 0;
+    for (var i = 0; i < id.length; i++) p += id.charCodeAt(i);
+    return (p % 2) === 1 ? 'female' : 'male';
+  }
+
   function heroPortrait(id) {
     var a = S.live[id];
-    if (!a || !window.TF_LOOK) return null;
-    var look = null;
-    try { look = a.look ? JSON.parse(a.look) : null; } catch (e) { /* lookJson 파손 — 해시 초상 */ }
-    var uuid = (look && look.uuid) || id;
-    var sex = look && /f/i.test(String(look.sex || '')) ? 'female' : 'male';
-    var age = look && look.age != null ? Number(look.age) : 40;
-    window.TF_LOOK.charSheetUrl({ uuid: uuid, sex: sex, age: age })
-      .then(function (u) {
-        if (heroPortraits[id] !== u) {
-          heroPortraits[id] = u;
-          if (S.selected === id) schedule();
-        }
-      })
-      .catch(function () { /* 부품 PNG 로딩 실패 — 초상 없이 렌더 */ });
+    if (!window.TF_LOOK) return null;
+    if (a) {
+      var look = null;
+      try { look = a.look ? JSON.parse(a.look) : null; } catch (e) { /* lookJson 파손 — 해시 초상 */ }
+      var uuid = (look && look.uuid) || id;
+      var sex = heroSexOf(id, look);
+      var age = look && look.age != null ? Number(look.age) : 40;
+      window.TF_LOOK.charSheetUrl({ uuid: uuid, sex: sex, age: age })
+        .then(function (u) {
+          if (heroPortraits[id] !== u) {
+            heroPortraits[id] = u;
+            if (S.selected === id) schedule();
+          }
+        })
+        .catch(function () { /* 부품 PNG 로딩 실패 — 초상 없이 렌더 */ });
+    }
+    // 프레임 공백(재접속·드랍)에도 캐시 초상 유지 — stale 카드의 나머지와 함께
     return heroPortraits[id] || null;
   }
 
@@ -665,7 +681,7 @@
           return { fill: row.querySelector('.tf-bar-fill'), val: row.querySelector('.tf-hero-need-val') };
         }),
         inv: el.querySelector('.tf-hero-inv'),
-        nameText: null, badgeHtml: null, actText: null, goalText: null, invHtml: null, portrait: null,
+        nameText: null, badgeHtml: null, actText: null, goalShown: null, invHtml: null, portrait: null,
       };
     }
     heroApply(a, r.stale, portrait);
@@ -707,9 +723,12 @@
       d.actKind.style.display = act ? '' : 'none';
     }
     var goal = a.goalText || '';
-    if (d.goalText !== goal) {
-      d.goalText = goal;
-      d.goal.textContent = goal ? mt(goal) : '';
+    // 원문이 아니라 '화면에 띄울 문장'(mt 캐시 반영)으로 가드 — 번역 완료
+    // schedule에서도 교체돼야 한다(원문 가드면 번역이 영원히 안 뜬다).
+    var goalShown = goal ? mt(goal) : '';
+    if (d.goalShown !== goalShown) {
+      d.goalShown = goalShown;
+      d.goal.textContent = goalShown;
       d.goal.style.display = goal ? '' : 'none';
     }
     HERO_NEEDS.forEach(function (pair, i) {
@@ -1651,6 +1670,7 @@
         name: a.name || (cur ? cur.name : a.id),
         status: a.status != null ? a.status : (cur ? cur.status : ''),
         actType: a.actType != null ? a.actType : (cur ? cur.actType : ''),
+        actProgress: a.actProgress != null ? a.actProgress : (cur ? cur.actProgress : 0),
         needs: a.needs || (cur ? cur.needs : {}),
         inv: a.inventory != null ? I.parseInv(a.inventory) : (cur ? cur.inv : {}),
         goalText: a.goalText != null ? a.goalText : (cur ? cur.goalText : ''),
@@ -1747,7 +1767,7 @@
       S.selected = id || null;
       S.selRelic = null;
       onSelected();
-      if (S.popup === 'chars') schedule();
+      schedule();   // 히어로 카드 즉시 반영 — 단선 시엔 틱이 안 오니 여기서 갱신
     };
   })();
 
@@ -1779,6 +1799,8 @@
     notify: notify,
     setNet: function (live) { S.netLive = live; },
     render: schedule,
+    // 소지 칩 아이콘 HTML — ui.js 우측 레일 소지품 패널이 재사용(동일 룩 유지)
+    chipIcon: chipIconHtml,
   };
   I.onLocale(function () { schedule(); });
 

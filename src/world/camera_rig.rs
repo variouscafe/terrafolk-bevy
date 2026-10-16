@@ -6,11 +6,11 @@
 
 use bevy::camera::ScalingMode;
 use bevy::core_pipeline::tonemapping::DebandDither;
-use bevy::post_process::bloom::Bloom;
-use bevy::render::view::ColorGrading;
 use bevy::input::gestures::PinchGesture;
 use bevy::input::mouse::AccumulatedMouseScroll;
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::view::ColorGrading;
 
 use super::camera_input::{PointerInput, ground_at};
 use super::data::WorldData;
@@ -22,13 +22,13 @@ pub const ZOOM_MAX: f32 = 4.2;
 const ZOOM_SMOOTH: f32 = 9.0;
 /// 정사영 기본 시야 높이(월드 단위) — 줌 1에서 세로로 보이는 폭.
 /// 참조 구도(마을 스케일 — 코티지 4.2m가 화면 세로의 ~20%).
-const VIEW_H: f32 = 22.0;
+pub const VIEW_H: f32 = 22.0;
 /// 카메라 거리(정사영은 크기 무관 — near/far 클리핑·그림자 프러스텀용).
 /// ⚠ terrain_splat.wgsl의 안개 축 상수(140.0·뷰방향)와 정합 — 변경 시 양쪽 수정.
 const CAM_DIST: f32 = 140.0;
 /// 부저각 — 요(대각)·피치(내려다봄). 참조 이미지 3/4 뷰.
 const CAM_YAW_DEG: f32 = 45.0;
-const CAM_PITCH_DEG: f32 = 35.0;
+pub const CAM_PITCH_DEG: f32 = 35.0;
 
 /// 휠 줌 — 한 스텝(노치)당 배율 기수(1.65^Δ)·Δ 게인
 const WHEEL_ZOOM_BASE: f32 = 1.65;

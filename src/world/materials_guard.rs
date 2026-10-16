@@ -35,9 +35,7 @@ pub fn guard_blend_materials(
 /// alpha_blend 파이프라인 키는 다시 요청되지 않고(가드가 다음 스캔에서
 /// Mask로 전환) alpha_mask 파이프라인으로 자가 치유된다.
 pub fn nonfatal_render_errors(app: &mut App) {
-    app.insert_resource(
-        bevy::render::error_handler::RenderErrorHandler(
-            |_err, _main, _render| bevy::render::error_handler::RenderErrorPolicy::Ignore,
-        ),
-    );
+    app.insert_resource(bevy::render::error_handler::RenderErrorHandler(
+        |_err, _main, _render| bevy::render::error_handler::RenderErrorPolicy::Ignore,
+    ));
 }

@@ -46,6 +46,7 @@ pub struct Concealer {
 }
 
 /// 선택 주민 주변 가림물 은닉 — 진입·수명 상한·이탈 복원.
+#[allow(clippy::type_complexity)] // Bevy 쿼리 타입 — 가림물 배제 접근
 pub fn conceal_occluders(
     time: Res<Time>,
     sel: Res<Selection>,

@@ -173,6 +173,7 @@ pub fn sync_daynight(
     let Some(f) = net.frame.as_ref() else { return };
     day.hour = f.hour as f32 + f.minute as f32 / 60.0;
     day.time_scale = 0.0;
+    day.season = f.season.clone();
     if let Some(sr) = f.sunrise {
         day.sunrise_min = sr as f32;
     }
@@ -369,6 +370,7 @@ pub struct RoamTo(pub Vec3);
 
 /// 자원 동기화 — 신규 스폰 / 사라진 것·상태 변화(사망·건축 단계) 재스폰.
 #[allow(clippy::too_many_arguments)] // Bevy 시스템 파라미터 — 메시·재질은 스폰 직접 주입용
+#[allow(clippy::type_complexity)] // 동기 루프 쿼리 — 배위·발판 메타까지 읽는 6튜플
 pub fn sync_resources(
     mut commands: Commands,
     net: Res<NetState>,

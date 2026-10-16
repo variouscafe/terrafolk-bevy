@@ -14,6 +14,7 @@ pub mod overlay;
 pub mod pick;
 pub mod precip;
 pub mod propsfx;
+pub mod sky;
 pub mod splat;
 pub mod terrain;
 pub mod villager;
@@ -47,6 +48,7 @@ impl Plugin for WorldPlugin {
                 (
                     camera_rig::spawn_camera,
                     daynight::spawn_sun,
+                    sky::spawn_birds,
                     pick::spawn_ring,
                     pick::register_bridge,
                     overlay::register_pan_bridge,
@@ -82,6 +84,7 @@ impl Plugin for WorldPlugin {
                 bld::hut_lights,
                 propsfx::bob_relics,
                 propsfx::spark_veins,
+                sky::sky_update,
                 villager::wander,
                 villager::animate_walk_idle,
                 (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),

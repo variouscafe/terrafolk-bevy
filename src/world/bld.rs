@@ -57,6 +57,7 @@ const GLOW_EMISSIVE: LinearRgba = LinearRgba::new(0.55, 0.435, 0.297, 1.0); // #
 
 /// 공사 발판 스폰 — 말뚝·밧줄·링·진행 바. 서버 앵커(x,y)=좌상단 타일.
 /// 루트 엔티티(SiteRect+SiteMeta)를 반환 — 호출처가 LiveResourceTag를 붙인다.
+#[allow(clippy::too_many_arguments)] // 스폰 파라미터 — 발판 규격·지면·진행률 주입
 pub fn spawn_site(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -169,6 +170,7 @@ pub fn spawn_site(
 /// 완공 건물 창불 쿼드 — 건물 중심 상공의 낮은 발광판(Bloom 번짐).
 /// FE ADD glow(alpha .13)의 WebGL2 대응 — Mask 강제 하에서도 성립.
 /// 발판 사각형을 함께 부여해 hut_lights가 점등 판정에 쓴다.
+#[allow(clippy::too_many_arguments)] // 스폰 파라미터 — 발판 사각형·중심·높이 주입
 pub fn spawn_window_glow(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,

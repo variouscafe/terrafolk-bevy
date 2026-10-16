@@ -26,7 +26,7 @@ trunk serve                  # 웹(:8080, 핫리로드)
 | `src/world/data.rs` | 데모 월드(시드 결정론 PRNG·랩 값노이즈). GID 어휘 = client-meta |
 | `src/world/terrain.rs` | 그리드 → 단일 Mesh(상판+단위단계 절벽, 아틀라스 UV) |
 | `src/world/billboard.rs` | 고정 절대각 빌보드(스태틱 정렬) + 모닥불 애님·포인트 라이트 |
-| `src/world/daynight.rs` | 게임 시각 순수 함수 → 태양·앰비언트·하늘색 |
+| `src/world/daynight.rs` | 게임 시각 순수 함수 → 태양·앰비언트·하늘색 + 밤 달·별(카메라 추적, 흐림 시 은닉) |
 | `src/world/water.rs` + `assets/shaders/water.wgsl` | 절차 수면(해시 노이즈·반짝임·프레넬) |
 | `src/world/villager.rs` | 4방향×4프레임 보행·배회(W계 미러) |
 | `src/world/camera_rig.rs` | 45° 저FOV 아이소 카메라 |
@@ -34,6 +34,7 @@ trunk serve                  # 웹(:8080, 핫리로드)
 | `src/world/overlay.rs` | 월드 앵커 투영 피드(`tf.onOverlay` — 말풍선·라벨·배지·미니맵 공용) + 미니맵 점프 `tf.panTo` + 자원 호버 `tf.onHoverRes` |
 | `src/world/bld.rs` | 건축 발판(§17.75) — 다중 타일 말뚝·밧줄·공사 링 펄스·진행 바·재료 더미, 완공 창불(§17.78) |
 | `src/world/propsfx.rs` | 유물 부유+자전·광맥 점멸 스파크(Bloom 점멸) |
+| `src/world/sky.rs` | 새 떼 원 유영(서풍 표류·밤 소멸·겨울 절반 휴면, FE ambient 포트) |
 | `src/world/cam_follow.rs` | 선택 주민 카메라 추적(FE camera-follow) — 수동 팬 입력 시 해제 |
 
 ## DOM UI 오버레이(☰ 메뉴·팝업)

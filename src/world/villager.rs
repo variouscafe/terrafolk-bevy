@@ -9,6 +9,7 @@ use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use std::time::Duration;
 
 use super::data::{SIZE, WorldData};
+use crate::net::apply::LiveAgentTag;
 
 const WALK_TIME: f32 = 0.85;
 /// 주민 키 목표(미터)
@@ -185,6 +186,48 @@ pub fn villager_ready(
         player_e,
         current_walk: false,
     });
+}
+
+/// 진단 — 주민 렌더 상태 덤프(유령 디버깅): 스폰 8초 후 1회.
+/// 애님 연결·스킨·재질 알파 모드를 콘솔에 기록한다.
+pub fn villager_render_probe(
+    time: Res<Time>,
+    q_root: Query<(Entity, &LiveAgentTag, Has<VillagerAnims>), With<Villager>>,
+    children: Query<&Children>,
+    players: Query<(Entity, &AnimationPlayer)>,
+    skinned: Query<(Entity, &bevy::mesh::skinning::SkinnedMesh)>,
+    mats: Res<Assets<StandardMaterial>>,
+    mat_handles: Query<&MeshMaterial3d<StandardMaterial>>,
+) {
+    #[allow(clippy::collapsible_if)]
+    if time.elapsed_secs() < 8.0 || time.elapsed_secs() > 8.2 {
+        return;
+    }
+    for (e, tag, anims) in &q_root {
+        let mut n_mesh = 0;
+        let mut n_skinned = 0;
+        let mut alpha_modes = std::collections::BTreeMap::new();
+        for child in children.iter_descendants(e) {
+            if let Ok((se, _)) = skinned.get(child) {
+                n_skinned += 1;
+                let _ = se;
+            }
+            if let Ok(h) = mat_handles.get(child) {
+                n_mesh += 1;
+                if let Some(m) = mats.get(h) {
+                    let key = format!("{:?}", m.alpha_mode);
+                    *alpha_modes.entry(key).or_insert(0) += 1;
+                }
+            }
+        }
+        let playing = children
+            .iter_descendants(e)
+            .any(|c| players.get(c).is_ok_and(|(_, p)| !p.all_paused()));
+        info!(
+            "[probe] {} anims={} playing={} meshes={} skinned={} alpha={:?}",
+            tag.0, anims, playing, n_mesh, n_skinned, alpha_modes
+        );
+    }
 }
 
 /// 시간 기반 자유 난수(배회 휴식 길이) — 결정론 대상 아님(연출).

@@ -172,7 +172,6 @@ pub fn hover_res(
     }
     #[cfg(target_arch = "wasm32")]
     {
-        use wasm_bindgen::prelude::*;
         let Some(cursor) = window.cursor_position() else {
             if last_id.is_some() {
                 *last_id = None;

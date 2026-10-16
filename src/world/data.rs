@@ -173,7 +173,9 @@ fn synthesize_relief(terrain: &[u8], height: &mut [i8], n: usize) {
         if terrain[i] == 1 {
             height[i] = -2; // 물 보존
         } else {
-            height[i] = hf[i].round().clamp(-1.0, 60.0) as i8;
+            // 육지는 최소 0 — 블러가 물 깊이(−2)를 해안으로 번뜨려 수면(−0.18)
+            // 아래로 가라앉히면 주민이 물에 잠겨 유령처럼 보인다(2026-10-17 수정)
+            height[i] = hf[i].max(0.0).round().clamp(0.0, 60.0) as i8;
         }
     }
 }

@@ -65,5 +65,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var alpha = 0.80 + fres * 0.12;
     alpha = mix(alpha, 0.62, shallow_w);          // 얕은수 투명
     alpha = max(alpha, foam_edge * 0.95);          // 포말선 불투명
-    return vec4<f32>(col, clamp(alpha, 0.0, 1.0));
+    // AlphaMode::Opaque(블렌딩 불가) — 알파 값은 프레임버퍼에 그대로 남아
+    // 캔버스 요소가 페이지 배경과 합성되는 오염원이므로 1.0으로 고정한다.
+    return vec4<f32>(col, 1.0);
 }

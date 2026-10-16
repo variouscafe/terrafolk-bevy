@@ -14,7 +14,8 @@ use super::camera_rig::CameraRig;
 #[cfg(target_arch = "wasm32")]
 use super::camera_rig::{CAM_PITCH_DEG, VIEW_H};
 use super::villager::Villager;
-use crate::net::apply::{LiveAgentTag, LiveResourceTag};
+use crate::net::apply::LiveAgentTag;
+use crate::net::resources::LiveResourceTag;
 
 /// 오버레이 앵커 높이(지면 기준 m) — 주민 상단(VILLAGER_H 1.62) 위 여백.
 /// 이름·배지·풍선은 JS가 이 앵커에서 위로 쌓는다.

@@ -163,13 +163,27 @@
   }
 
   /** 투영 피드 소비 — 노드 배치(매 프레임) + 상태 갱신(1s 프레임 데이터 기반) */
+  var PRUNE_AFTER_MS = 120000; // 미등장 2분 — 떠난/사망 주민 노드 회수(리뷰 #10)
   function applyProjection() {
     var S = UI() && UI().state;
     var live = S ? S.live : {};
     var selId = S ? S.selected : null;
     var showLabel = zoom <= LABEL_ZOOM_MAX;
+    var now = Date.now();
     for (var id in nodes) {
-      if (!seen[id]) nodes[id].el.classList.add('off');
+      if (!seen[id]) {
+        var n0 = nodes[id];
+        n0.el.classList.add('off');
+        if (n0.missSince === undefined) n0.missSince = now;
+        // 미등장 지속 — DOM 회수(장시간 관전의 무한 노드 증식·레이아웃 비용 차단)
+        if (now - n0.missSince > PRUNE_AFTER_MS && id !== selId) {
+          if (n0.bubbleTimer) { clearTimeout(n0.bubbleTimer); n0.bubbleTimer = 0; }
+          n0.el.remove();
+          delete nodes[id];
+        }
+      } else {
+        nodes[id].missSince = undefined;
+      }
     }
     for (var id2 in proj) {
       var p = proj[id2];
@@ -247,8 +261,11 @@
     var S = UI() && UI().state;
     var live = S ? S.live : {};
     var n = ensureNode(m.agent_id);
+    // 화자 판정 — live는 id 키이라 이름으로 조회하면 항상 유저로 오판했었다
+    // (리뷰 #4). ui.js isHumanRow와 동일 기준: '@' 포함이거나 주민명 불일치.
+    var a = live[m.agent_id];
     var isUser = String(m.speaker || '').indexOf('@') >= 0 || m.speaker === 'user' ||
-      !live[m.speaker];
+      (!!a && String(m.speaker || '') !== a.name);
     var tag = isUser ? '⟪' + String(m.speaker || '').split('@')[0] + '⟫ ' : '';
     var text = tag + String(m.text || m.text_en || '').slice(0, 60);
     if (n.bubbleText === text && n.bubble) return;   // 에코 확정 재방송 — 무변화

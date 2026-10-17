@@ -308,14 +308,15 @@
     applyVv();
   }
 
-  // 언어 전환 — 채팅 독 문자열 재렌더(TF_I18N이 늦게 로드돼도 다음 전환부터)
+  // 언어 전환 — 채팅 독 문자열 재렌더(TF_I18N이 늦게 로드돼도 다음 전환부터).
+  // sideRebuild 호출은 제거(리뷰 #7) — tf-rail.js 내부 심볼이라 미정의 참조였고,
+  // 레일은 자체 500ms 폴에서 로케일을 다시 읽어 재렌더한다(무관하게 갱신됨).
   if (window.TF_I18N) {
     window.TF_I18N.onLocale(function () {
       if (sel) {
         renderHead();
         if (logOpen) renderLog();
       }
-      sideRebuild();
     });
   }
 

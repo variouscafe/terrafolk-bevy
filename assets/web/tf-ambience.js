@@ -27,17 +27,24 @@
     scheduleLightning(clock.weather);
   }
 
-  // 번개 — storm에서만. 3.5~9s 간격, 25% 이중 타격(FE flashLightning 체인)
+  // 번개 — storm에서만. 3.5~9s 간격, 25% 이중 타격(FE flashLightning 체인).
+  // 무장 멱등 — feed.frame(1s)마다 호출되므로 이미 무장중이면 재무장하지
+  // 않는다(리뷰 #6 — 매 호출마다 타이머를 리셋해 영구 무발동이었다).
   var boltTimer = 0;
-  function scheduleLightning(weather) {
-    var storm = weather === 'storm';
-    if (boltTimer) { clearTimeout(boltTimer); boltTimer = 0; }
-    if (!storm) { lightningEl.style.opacity = '0'; return; }
+  function armBolt() {
     boltTimer = setTimeout(function () {
       flashBolt(0);
       if (Math.random() < 0.25) setTimeout(function () { flashBolt(0.12); }, 120 + Math.random() * 180);
-      scheduleLightning('storm');
+      armBolt();
     }, 3500 + Math.random() * 5500);
+  }
+  function scheduleLightning(weather) {
+    if (weather !== 'storm') {
+      if (boltTimer) { clearTimeout(boltTimer); boltTimer = 0; }
+      lightningEl.style.opacity = '0';
+      return;
+    }
+    if (!boltTimer) armBolt();
   }
   function flashBolt(delay) {
     if (delay) {

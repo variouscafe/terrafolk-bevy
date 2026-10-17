@@ -295,7 +295,9 @@
 
   function renderSide() {
   var sel = CHAT() ? CHAT().getSel() : null; var on = !!(sel && side);
-    sidePanel.style.display = on ? '' : 'none';
+    // ''가 아니라 'block' — CSS 기본값 .tf-sidepanel{display:none}이
+    // 계단식으로 이겨버려 패널이 영원히 안 뜨던 버그(2026-10-17 리뷰 #1)
+    sidePanel.style.display = on ? 'block' : 'none';
     if (!on) { sideDom = null; return; }
     var a = sideSel();
     if (!a) return;

@@ -109,11 +109,13 @@
     mmHost.appendChild(mmCvs);
     document.body.appendChild(mmHost);
     mmHost.addEventListener('click', function (e) {
-      if (!mmBake || !tf.panTo) return;
+      // tf 지역변수가 없었다 — window.terrafolk 브리지로(리뷰 #2, 점프 사망)
+      var bridge = window.terrafolk;
+      if (!mmBake || !bridge || !bridge.panTo) return;
       var r = mmHost.getBoundingClientRect();
       var x = (e.clientX - r.left) / r.width * mmBake.width;
       var y = (e.clientY - r.top) / r.height * mmBake.height;
-      tf.panTo(x, y);
+      bridge.panTo(x, y);
     });
     mmDraw();
   }

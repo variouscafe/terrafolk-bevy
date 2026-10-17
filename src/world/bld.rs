@@ -91,11 +91,16 @@ pub fn spawn_site(
     let hx = fw / 2.0 - 0.08;
     let hz = fh / 2.0 - 0.08;
     for (dx, dz) in [(-hx, -hz), (hx, -hz), (-hx, hz), (hx, hz)] {
-        commands.spawn((
-            Mesh3d(post.clone()),
-            MeshMaterial3d(post_mat.clone()),
-            Transform::from_translation(Vec3::new(cx + dx, ground + 0.42, cz + dz)),
-        ));
+        let post_e = commands
+            .spawn((
+                Mesh3d(post.clone()),
+                MeshMaterial3d(post_mat.clone()),
+                Transform::from_translation(Vec3::new(cx + dx, ground + 0.42, cz + dz)),
+            ))
+            .id();
+        // 루트 자식화 — 철거(LiveResourceTag despawn) 시 말뚝·밧줄도 함께
+        // 사라지게(리뷰 #5 — 완공 후에도 발판이 남아 벽을 뚫던 누수)
+        commands.entity(root).add_child(post_e);
     }
     // 밧줄 외곽 — 발판 가장자리 4변(지면 위 3cm, unlit)
     let rope = meshes.add(Cuboid::new(1.0, 0.025, 0.03));
@@ -113,7 +118,10 @@ pub fn spawn_site(
         let mut tr = Transform::from_translation(Vec3::new(px, ground + 0.05, pz));
         tr.rotation = Quat::from_rotation_y(rot);
         tr.scale.x = len;
-        commands.spawn((Mesh3d(rope.clone()), MeshMaterial3d(rope_mat.clone()), tr));
+        let rope_e = commands
+            .spawn((Mesh3d(rope.clone()), MeshMaterial3d(rope_mat.clone()), tr))
+            .id();
+        commands.entity(root).add_child(rope_e);
     }
     // 공사 링 — 발판 하단 가장자리 기준 반경 max(w,h)×0.6(FE 비율).
     // 링마다 전용 재질 인스턴스 — 밝기 펄스가 다른 발판과 섞이지 않게.

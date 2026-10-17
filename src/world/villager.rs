@@ -37,9 +37,13 @@ pub struct VillagerAnims {
 }
 
 #[derive(Component)]
-pub struct VillagerModel(pub Handle<Gltf>);
+pub struct VillagerModel(pub Handle<Gltf>, pub Option<String>);
 
 const MODELS: [&str; 2] = ["models/VillagerMan.glb", "models/VillagerWoman.glb"];
+
+/// 여성 모델 헤어 변형 프리미티브(VillagerWoman Casual_Head 공존 파츠) —
+/// 룩 해시로 1택. 남성(Sam 단일 메시)엔 해당 없다.
+const HAIR_VARIANTS: [&str; 3] = ["Hair_Blond", "Hair_Brown", "Brown"];
 
 /// 라이브 에이전트용 — lookJson.sex(있으면) 또는 id 해시로 남/여 선택.
 pub fn model_path_for(id: &str, look: Option<&str>) -> &'static str {
@@ -74,10 +78,11 @@ pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Re
         let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(path));
         let gltf = assets.load(path);
         let ground = world.height_at(x, y);
+        let _ = &path;
         let yaw = rng.range(0.0, std::f32::consts::TAU);
         commands
             .spawn((
-                VillagerModel(gltf),
+                VillagerModel(gltf, None),
                 Villager {
                     from: Vec3::new(x as f32 + 0.5, ground, y as f32 + 0.5),
                     to: Vec3::new(x as f32 + 0.5, ground, y as f32 + 0.5),
@@ -212,6 +217,24 @@ fn finish_villager_setup(
     let Some(gltf) = gltfs.get(&model.0) else {
         return false; // Gltf 아직 로딩 — 재시도로 흡수
     };
+    // ── 룩 파츠 선택 — GLB는 변형 프리미티브가 '공존'한다(여성 머리 3색).
+    // 엔티티명 "Casual_Head.Hair_Blond" 규칙(bevy_gltf primitive_name)으로
+    // lookJson 해시가 고른 하나만 남기고 나머지 파기 — 주민별 외형 분리.
+    {
+        let seed = model.1.as_deref().unwrap_or("");
+        let h = seed.bytes().fold(0u64, |a, b| a.wrapping_mul(31) + b as u64);
+        let pick = HAIR_VARIANTS[(h % HAIR_VARIANTS.len() as u64) as usize];
+        for child in children.iter_descendants(entity) {
+            if let Ok((Some(name), _, _, _, _)) = q_walk.get(child)
+                && let Some(mat) = name.rsplit('.').next()
+                && name.starts_with("Casual_Head.")
+                && HAIR_VARIANTS.contains(&mat)
+                && mat != pick
+            {
+                commands.entity(child).despawn();
+            }
+        }
+    }
     // Walk/Idle 클립 검색 — 접미 매칭(프리픽스는 모델별 상이)
     let find = |suffix: &str| {
         gltf.named_animations

@@ -6,6 +6,7 @@ use bevy::prelude::*;
 
 use super::{NetState, NetStatus};
 use crate::world::data::{PropKind, WorldData};
+use super::visual_map::{ResState, bld_size, live_visual};
 
 #[derive(Component)]
 pub struct LiveResourceTag(pub u32);
@@ -30,129 +31,6 @@ pub(crate) fn cleared_tiles(
         }
     }
     out
-}
-
-/// 자원 stateJson 최소 파싱 — 동물 {alive}·건축 {stage,type,w,h,progress}·
-/// 나무 {maturity}(§17.75 다중 타일·성장 단계).
-#[derive(Default, serde::Deserialize)]
-struct ResState {
-    #[serde(default)]
-    alive: Option<bool>,
-    #[serde(default)]
-    stage: Option<String>,
-    #[serde(default, rename = "type")]
-    bld_type: Option<String>,
-    #[serde(default)]
-    w: Option<u16>,
-    #[serde(default)]
-    h: Option<u16>,
-    #[serde(default)]
-    progress: Option<f32>,
-    #[serde(default)]
-    maturity: Option<u8>,
-}
-
-/// 발판 크기 — state.w/h 우선, 레거시 스냅숏은 타입 기본값(FE BLD_SEED_SIZE).
-fn bld_size(state: &ResState, bld_type: &str) -> (u16, u16) {
-    if let (Some(w), Some(h)) = (state.w, state.h)
-        && w >= 1
-        && h >= 1
-    {
-        return (w, h);
-    }
-    match bld_type {
-        "WINDBREAK" => (1, 1),
-        "LONGHOUSE" => (3, 2),
-        "WAREHOUSE" => (3, 3), // §17.81 창고
-        _ => (2, 2),           // HUT·미지 타입
-    }
-}
-
-/// 서버 kind → (소품 종, 목표 높이). None = 비표시(공사 중 hut은 발판 경로).
-/// 동물은 사냥 사망(alive=false) 시 소멸, 나무는 성장 단계(maturity 0..3)별
-/// 종·스케일(FE 4단계 성장), 완공 건물은 타입별 GLB.
-fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind, f32)> {
-    if super::dbg_gate::off(&format!("no_{kind}")) {
-        return None; // 진단 게이트 — ?tfdbg=no_animals 등
-    }
-    match kind {
-        "animal" => {
-            if state.alive == Some(false) {
-                return None;
-            }
-            let k = match species {
-                "boar" => PropKind::AnimalBoar,
-                "deer" => PropKind::AnimalDeer,
-                "water_deer" => PropKind::AnimalWaterDeer,
-                "squirrel" => PropKind::AnimalSquirrel,
-                _ => PropKind::AnimalPheasant, // pheasant·기타 조류
-            };
-            Some((k, crate::world::models::prop_model(k).0))
-        }
-        "hut" => {
-            // 완공만 GLB — 공사 중(PLANNED~ROOF_READY)은 bld::spawn_site 발판.
-            let stage = state.stage.as_deref().unwrap_or("COMPLETED");
-            if stage != "COMPLETED" {
-                return None;
-            }
-            let bld_type = state.bld_type.as_deref().unwrap_or("HUT");
-            let (k, h) = match bld_type {
-                "WINDBREAK" => (
-                    PropKind::Windbreak,
-                    crate::world::models::prop_model(PropKind::Windbreak).0,
-                ),
-                "LONGHOUSE" => (PropKind::Hut, 4.2 * 1.5),
-                "WAREHOUSE" => (
-                    PropKind::StorageHut,
-                    crate::world::models::prop_model(PropKind::StorageHut).0 * 1.35,
-                ),
-                _ => (PropKind::Hut, 4.2),
-            };
-            Some((k, h))
-        }
-        "tree" => {
-            // 성장 단계 — 0:묘목(전용 GLB) 1:어린 나무 0.5× 2:반성장 0.78× 3:성목
-            let m = state.maturity.unwrap_or(3).min(3);
-            let pine = species.contains("pine");
-            let k = if m == 0 {
-                PropKind::TreeSapling
-            } else if pine {
-                PropKind::TreePine
-            } else {
-                PropKind::TreeBroadleaf
-            };
-            let (h, _) = crate::world::models::prop_model(k);
-            let scale = match m {
-                1 => 0.5,
-                2 => 0.78,
-                _ => 1.0,
-            };
-            Some((k, h * scale))
-        }
-        _ => {
-            let k = live_prop(kind, species)?;
-            let (h, _) = crate::world::models::prop_model(k);
-            Some((k, h))
-        }
-    }
-}
-
-/// 서버 kind → 소품 종(정적 자원).
-fn live_prop(kind: &str, species: &str) -> Option<PropKind> {
-    match kind {
-        "tree" => Some(if species.contains("pine") {
-            PropKind::TreePine
-        } else {
-            PropKind::TreeBroadleaf
-        }),
-        "plant" => Some(PropKind::BerryBush),
-        "gold_vein" => Some(PropKind::GoldVein),
-        "campfire" => Some(PropKind::Campfire),
-        "stash" => Some(PropKind::Stash),
-        "grave" => Some(PropKind::Grave),
-        "relic" => Some(PropKind::Relic),
-        _ => None,
-    }
 }
 
 /// 자원 상태 서명 — 변화(사망·건축 단계 진행) 감지용.
@@ -317,10 +195,18 @@ pub fn sync_resources(
     // 기존 실체 id 사전 — 신규 판정을 O(N×M) 순회 대신 해시 조회로.
     let live_ids: std::collections::HashSet<u32> =
         q_live.iter().map(|(_, t, _, _, _, _)| t.0).collect();
+    // 스폰 예산 — 수천 자원이 한 프레임에 몰리면 씬 인스턴스화가 메인 스레드를
+    // 수십 초 묶는다(2026-10-17 프리즈). 64/프레임 분산 — 잔여분은 다음 프레임
+    // 호출에서 자동 이어진다(태그 없음 = 신규 판정).
+    let mut budget: usize = 64;
     for r in &frame.resources {
         if live_ids.contains(&r.id) {
             continue;
         }
+        if budget == 0 {
+            break;
+        }
+        budget -= 1;
         let st: ResState = r
             .state
             .as_deref()

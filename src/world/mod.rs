@@ -84,6 +84,7 @@ impl Plugin for WorldPlugin {
                 (
                     bld::site_dressing,
                     bld::hut_lights,
+                    overlay::hover_res, // §17.78 자원 호버 툴팁 — 미등록으로 죽어있었다(리뷰 #3)
                     propsfx::bob_relics,
                     propsfx::spark_veins,
                     sky::sky_update,
@@ -91,6 +92,8 @@ impl Plugin for WorldPlugin {
                 villager::wander,
                 villager::animate_walk_idle,
                 villager::retry_villager_setup,
+                // 렌더 진단 프로브 — dev 빌드 전용(운영 콘솔 지저분함 방지, 리뷰 #9)
+                #[cfg(debug_assertions)]
                 villager::villager_render_probe,
                 (pick::drain_select, pick::pick_agent, pick::follow_selection).chain(),
                 occlusion::conceal_occluders,

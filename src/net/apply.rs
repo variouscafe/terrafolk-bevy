@@ -278,6 +278,7 @@ pub fn sync_agents(
         if super::dbg_gate::off("no_villagers") {
             continue; // 진단 게이트
         }
+        let look = a.look.clone();
         let path = crate::world::villager::model_path_for(&a.id, a.look.as_deref());
         let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(path));
         let gltf = assets.load(path);
@@ -288,7 +289,7 @@ pub fn sync_agents(
             .max(-0.14);
         commands
             .spawn((
-                crate::world::villager::VillagerModel(gltf),
+                crate::world::villager::VillagerModel(gltf, look),
                 crate::world::villager::Villager {
                     from: Vec3::new(a.x, ground, a.y),
                     to: Vec3::new(a.x, ground, a.y),

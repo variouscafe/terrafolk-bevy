@@ -75,9 +75,14 @@ FE(React) worldsim 화면의 바닐라 JS 포트 — 빌드 도구 없이 trunk�
 - Cloudflare Pages(운영): `trunk build --release` 후
   `wasm-opt --enable-bulk-memory-opt --enable-nontrapping-float-to-int -Os --strip-debug --strip-producers`
   로 최적화(≈25.6MB) → `dist/index.html`의 wasm `integrity="sha384-…"` 갱신 →
-  `npx wrangler pages deploy dist --commit-dirty=true`.
+  `npx wrangler pages deploy dist --branch main --commit-dirty=true`.
   **주의 — `-Oz`는 이 빌드를 잘못 컴파일해 백지 월드가 된다**(앱은 동작, 렌더 안 됨).
-  `-Os`+strip 조합만 검증 완료. 배포 후 부트 E2E로 렌더 확인 필수.
+  `-Os`+strip 조합만 검증 완료(wasm-opt v133). 배포 후 부트 E2E로 렌더 확인 필수.
+  **integrity 함정(2026-10-17 사고)** — index.html엔 해시가 둘 있다:
+  `modulepreload .js`(글루)와 `preload .wasm`. 갱신 대상은 **wasm 것만**.
+  js 것까지 wasm 해시로 덮어쓰면 SRI 불일치로 글루 로드가 죽어 canvas가
+  300x150(초기화 안 됨)로 남는다. trunk는 wasm-opt를 자체 실행하지 않으므로
+  수동 최적화·해시 갱신이 둘 다 필요하다.
 - GitHub Pages: `deploy-github-page` 워크플로(수동 디스패치) → trunk 릴리스 빌드 →
   wasm-opt → gh-pages 브랜치. Pages 설정이 gh-pages 소스를 가리키면
   `https://<user>.github.io/terrafolk-rust/` 에서 서비스된다.

@@ -10,6 +10,7 @@ pub mod daynight;
 pub mod materials_guard;
 pub mod models;
 pub mod occlusion;
+pub mod legacy_world;
 pub mod overlay;
 pub mod pick;
 pub mod precip;
@@ -25,6 +26,14 @@ use bevy::pbr::MaterialPlugin;
 use bevy::prelude::*;
 
 pub struct WorldPlugin;
+
+/// 안드로이드 GPU 전처리 강제 OFF — 시스템 본체(위 cfg 블록에서 등록).
+#[cfg(target_os = "android")]
+fn clamp_gpu_preprocessing(
+    mut s: bevy::prelude::ResMut<bevy::render::batching::gpu_preprocessing::GpuPreprocessingSupport>,
+) {
+    s.max_supported_mode = bevy::render::batching::gpu_preprocessing::GpuPreprocessingMode::None;
+}
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
@@ -58,16 +67,24 @@ impl Plugin for WorldPlugin {
         // 데모 결정론 월드는 네이티브 개발 빌드 전용 — 웹(wasm)은 라이브 접속→
         // 프라임으로 곧장 간다(스폰-철거 낭비·플래시 제거. 로딩 오버레이는
         // tf.uiPrime 통보로 해제).
+        // 네이티브 데모 — 레거시 FE와 동일한 공용 맵(시드 20261011)으로 구동.
+        // 웹은 prime_live_world가 라이브 맵으로 교체한다.
         #[cfg(not(target_arch = "wasm32"))]
-        app.add_systems(
-            Startup,
-            (
-                terrain::spawn_terrain,
-                water::spawn_water,
-                models::spawn_props,
-                villager::spawn_villagers,
-            ),
-        );
+        app.add_systems(Update, legacy_world::prime_legacy_world);
+        // 안드로이드 — GPU 전처리(버퍼 매핑 리드백) 강제 OFF. 소프트웨어 GPU
+        // (SwiftShader)와 일부 모바일 드라이버에서 DeviceLost 후 매핑 패닉으로
+        // 앱이 죽는다(2026-10-17 에뮬레이터 실측). CPU 배칭으로 돌려 안정화 —
+        // WebGL2 웹 경로도 원래 CPU 전처리라 품질 차이 없다.
+        #[cfg(target_os = "android")]
+        {
+            if let Some(render_app) = app.get_sub_app_mut(bevy::render::RenderApp) {
+                render_app.add_systems(
+                    bevy::render::Render,
+                    clamp_gpu_preprocessing
+                        .in_set(bevy::render::RenderSystems::Prepare),
+                );
+            }
+        }
         app.add_systems(Update, materials_guard::guard_blend_materials);
         app.add_systems(
             Update,

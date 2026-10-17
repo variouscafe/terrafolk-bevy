@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use std::time::Duration;
 
-use super::data::{SIZE, WorldData};
+use super::data::WorldData;
 use crate::net::apply::LiveAgentTag;
 
 const WALK_TIME: f32 = 0.85;
@@ -94,9 +94,13 @@ pub fn model_path_for(id: &str, look: Option<&str>) -> &'static str {
     MODELS[(h % 2) as usize]
 }
 
-pub fn spawn_villagers(mut commands: Commands, world: Res<WorldData>, assets: Res<AssetServer>) {
+pub fn spawn_legacy_villagers(
+    commands: &mut Commands,
+    world: &WorldData,
+    assets: &AssetServer,
+) {
     let mut rng = super::data::Rng::new(99);
-    let c = SIZE as i32 / 2;
+    let c = world.size as i32 / 2;
     let mut placed = 0;
     let mut attempts = 0;
     while placed < 6 && attempts < 200 {

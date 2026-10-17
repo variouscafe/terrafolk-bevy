@@ -72,6 +72,9 @@ fn bld_size(state: &ResState, bld_type: &str) -> (u16, u16) {
 /// 동물은 사냥 사망(alive=false) 시 소멸, 나무는 성장 단계(maturity 0..3)별
 /// 종·스케일(FE 4단계 성장), 완공 건물은 타입별 GLB.
 fn live_visual(kind: &str, species: &str, state: &ResState) -> Option<(PropKind, f32)> {
+    if super::dbg_gate::off(&format!("no_{kind}")) {
+        return None; // 진단 게이트 — ?tfdbg=no_animals 등
+    }
     match kind {
         "animal" => {
             if state.alive == Some(false) {
@@ -344,7 +347,10 @@ pub fn sync_resources(
                 h,
             };
             if stage != "COMPLETED" {
-                let site = crate::world::bld::spawn_site(
+                let site = if super::dbg_gate::off("no_scaffold") {
+                    commands.spawn(Transform::default()).id() // 진단 게이트 — 빈 발판
+                } else {
+                crate::world::bld::spawn_site(
                     &mut commands,
                     &mut meshes,
                     &mut std_mats,
@@ -354,7 +360,8 @@ pub fn sync_resources(
                     h,
                     ground,
                     st.progress.unwrap_or(0.0).clamp(0.0, 1.0),
-                );
+                )
+                };
                 commands
                     .entity(site)
                     .insert((LiveResourceTag(r.id), LiveResMeta(sig)));

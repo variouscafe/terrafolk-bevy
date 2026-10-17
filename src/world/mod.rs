@@ -34,6 +34,7 @@ impl Plugin for WorldPlugin {
         app.add_plugins(MaterialPlugin::<splat::TerrainMaterial>::default());
         app.add_plugins(MaterialPlugin::<wind::WindMaterial>::default());
         app.insert_resource(ClearColor(Color::srgb(0.30, 0.48, 0.68)))
+            .init_resource::<models::MeshAabbCache>()
             .insert_resource(data::WorldData::generate(20261015))
             .insert_resource(daynight::DayTime::default())
             .insert_resource(precip::WeatherState::default())

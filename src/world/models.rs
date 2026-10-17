@@ -373,12 +373,20 @@ fn chain_matrix(entity: Entity, root_e: Entity, q: &FitQuery<'_, '_>) -> Mat4 {
     m
 }
 
+/// 메시 AABB 캐시 — 버텍스 전수 순회를 에셋별 1회로.
+/// 라이브 자원 수천 개(2026-10-17 4,695개)가 동시 로드 완료되며 같은 GLB
+/// 메시를 반복 측정해 메인 스레드가 수십 초 블록되던 프리즈의 근본 대책.
+/// 유니크 GLB 메시는 ~26개뿐 — 캐시 적중률 사실상 100%.
+#[derive(Resource, Default)]
+pub struct MeshAabbCache(pub(crate) std::collections::HashMap<bevy::asset::AssetId<Mesh>, (Vec3, Vec3)>);
+
 /// 유지 메시들의 결합 AABB — 각 메시를 체인 행렬로 루트 로컬 공간으로.
 pub fn meshes_aabb(
     ents: &[Entity],
     root_e: Entity,
     q: &FitQuery<'_, '_>,
     meshes: &Assets<Mesh>,
+    cache: &mut MeshAabbCache,
 ) -> Option<(Vec3, Vec3)> {
     let mut mn = Vec3::splat(f32::MAX);
     let mut mx = Vec3::splat(f32::MIN);
@@ -386,8 +394,19 @@ pub fn meshes_aabb(
         let Ok((_, _, mesh, _, _)) = q.get(e) else {
             continue;
         };
-        let Some((amn, amx)) = mesh.and_then(|mh| meshes.get(&mh.0)).and_then(mesh_aabb) else {
+        let Some(mh) = mesh else {
             return None; // 미로딩 — 재시도
+        };
+        let Some(mesh) = meshes.get(&mh.0) else {
+            return None; // 미로딩 — 재시도
+        };
+        let (amn, amx) = match cache.0.get(&mh.id()) {
+            Some(cached) => *cached,
+            None => {
+                let aabb = mesh_aabb(mesh)?; // 측정 실패 메시는 캐시하지 않는다
+                cache.0.insert(mh.id(), aabb);
+                aabb
+            }
         };
         let mat = chain_matrix(e, root_e, q);
         for cx in [amn.x, amx.x] {
@@ -433,6 +452,7 @@ pub fn fit_props(
     >,
     q_all: FitQuery,
     meshes: Res<Assets<Mesh>>,
+    mut aabb_cache: ResMut<MeshAabbCache>,
 ) {
     for (root_e, prop, children) in &q_root {
         let mut keep_mesh: Option<Entity> = None;
@@ -475,7 +495,8 @@ pub fn fit_props(
             measure = all.into_iter().map(|(e, _)| e).collect();
         }
         // 메시 미로딩이면 다음 프레임 재시도(핏될 때까지 매 프레임 대상 유지)
-        let Some((mn, mx)) = meshes_aabb(&measure, root_e, &q_all, &meshes) else {
+        let Some((mn, mx)) = meshes_aabb(&measure, root_e, &q_all, &meshes, &mut aabb_cache)
+        else {
             continue;
         };
         let size = (mx - mn).max(Vec3::splat(1e-4));

@@ -11,25 +11,26 @@ use bevy::shader::ShaderRef;
 
 use super::data::WorldData;
 
+/// 수면 재질 — 유니폼 3개로 패킹(2026-10-17 사고 대응).
+/// WebGL2 프래그먼트 유니폼 버퍼 한도(스펙 최소 12)는 뷰 그룹(조명·클러스터
+/// 등 ~8개)과 재질 그룹을 합산해 계산된다. 라이브 월드에서 수면 파이프라인이
+/// 13개로 초과해 생성 실패 → 수면이 통째로 안 그려지고(배경이 비치는 유백색
+/// 물) 오류가 매 프레임 재시도되는 회귀가 있었다. 스칼라 파라미터는 Vec4에
+/// 겹쳐 패킹해 예산을 2개 환수(13→11) — 스펙 최소 어댑터에서도 여유 1개.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct WaterMaterial {
     #[uniform(0)]
     pub deep: Vec4,
     #[uniform(1)]
     pub shallow: Vec4,
-    /// x=스크롤 속도 — WebGL2 uniform 바인딩 16바이트 정렬(4바이트 스칼라 금지)
+    /// x=스크롤 속도 · y=파형 스케일 · z=월드 크기(포말 UV 정규화) — WebGL2
+    /// uniform 바인딩 16바이트 정렬(4바이트 스칼라 금지)
     #[uniform(2)]
-    pub scroll_speed: Vec4,
-    /// x=파형 스케일
-    #[uniform(3)]
-    pub wave_scale: Vec4,
+    pub params: Vec4,
     /// 해안거리(R8 정규화 — 셰이더에서 ×MAX_SHORE_DIST)
-    #[texture(4)]
-    #[sampler(5)]
+    #[texture(3)]
+    #[sampler(4)]
     pub shore: Handle<Image>,
-    /// x=월드 크기(포말 UV 정규화 — 데모 56·라이브 가변)
-    #[uniform(6)]
-    pub world_size: Vec4,
 }
 
 impl Material for WaterMaterial {
@@ -37,9 +38,9 @@ impl Material for WaterMaterial {
         "shaders/water.wgsl".into()
     }
     fn alpha_mode(&self) -> AlphaMode {
-        // WebGL2 방어 — 이 재질은 유니폼 5개라 Blend(alpha_blend 파이프라인)면
-        // 프래그먼트 유니폼 한도(12) 초과로 앱이 종료된다. 불투명 수면 +
-        // 셰이더 프레넬·포말로 표현(바닥 투과는 포기 — materials_guard 참조).
+        // WebGL2 방어 — Blend(alpha_blend 파이프라인)는 프래그먼트 유니폼이
+        // opaque보다 1개 더 많아 한도(12) 초과. 불투명 수면 + 셰이더 프레넬·
+        // 포말로 표현(바닥 투과는 포기 — materials_guard 참조).
         AlphaMode::Opaque
     }
 }
@@ -160,10 +161,9 @@ fn build_water(
             // 청록-하늘색 파레트(참조) — 커스텀 재질이라 값은 sRGB 감각(셰이더 그대로 출력)
             deep: Vec4::new(0.16, 0.50, 0.66, 0.80),
             shallow: Vec4::new(0.38, 0.76, 0.80, 0.80),
-            scroll_speed: Vec4::new(0.06, 0.0, 0.0, 0.0),
-            wave_scale: Vec4::new(3.2, 0.0, 0.0, 0.0),
+            // x=스크롤 속도 · y=파형 스케일 · z=월드 크기
+            params: Vec4::new(0.06, 3.2, size, 0.0),
             shore,
-            world_size: Vec4::new(size, 0.0, 0.0, 0.0),
         })),
     )
 }

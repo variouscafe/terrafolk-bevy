@@ -182,5 +182,6 @@ pub fn drain_frames(queue: Res<FrameQueue>, mut net: ResMut<NetState>) {
 
 /// 라이브 적용 로직(지형 프라임·시간·주민)
 pub mod apply;
+pub mod dbg_gate;
 /// 라이브 자원 동기(자원·발판·동물 배위) — apply에서 기능별 분리
 pub mod resources;

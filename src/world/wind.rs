@@ -59,6 +59,9 @@ pub fn apply_wind(
     mut wind_mats: ResMut<Assets<WindMaterial>>,
     mut cache: Local<HashMap<AssetId<StandardMaterial>, Handle<WindMaterial>>>,
 ) {
+    if crate::net::dbg_gate::off("no_wind") {
+        return; // 진단 게이트 — WindMaterial 교체 스킵
+    }
     let mut visited: Vec<Entity> = Vec::new();
     for (root_e, prop) in &q_root {
         if !is_wind_target(prop.kind) {

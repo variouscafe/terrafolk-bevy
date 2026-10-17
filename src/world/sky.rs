@@ -41,6 +41,9 @@ pub fn spawn_birds(
     mut mats: ResMut<Assets<StandardMaterial>>,
     world: Res<WorldData>,
 ) {
+    if crate::net::dbg_gate::off("no_sky") {
+        return; // 진단 게이트 — 새 떼 스폰 스킵
+    }
     let mesh = meshes.add(Mesh::from(Circle::new(0.16)));
     let mat = mats.add(StandardMaterial {
         base_color: BIRD_COLOR,

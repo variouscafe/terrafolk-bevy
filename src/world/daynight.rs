@@ -70,6 +70,7 @@ pub fn spawn_sun(
         Transform::default(),
     ));
     // 달 — 언릿 창백 원반(밤 하늘 앵커, apply_sky가 위치·가시성 소유)
+    if !crate::net::dbg_gate::off("no_sky") {
     commands.spawn((
         MoonDisc,
         Transform::from_scale(Vec3::splat(5.0)),
@@ -113,6 +114,7 @@ pub fn spawn_sun(
         })
         .id();
     let _ = root;
+    } // no_sky 게이트 — 달·별 스폰 스킵
 }
 
 pub fn advance_time(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, mut day: ResMut<DayTime>) {

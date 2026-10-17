@@ -90,20 +90,24 @@ pub fn prime_live_world(
         })
         .unwrap_or(center);
 
-    crate::world::terrain::spawn_live_terrain(
-        &mut commands,
-        &world,
-        &assets,
-        &mut meshes,
-        &mut terrain_mats,
-    );
-    crate::world::water::spawn_live_water(
-        &mut commands,
-        &world,
-        &mut meshes,
-        &mut water_mats,
-        &mut images,
-    );
+    if !super::dbg_gate::off("no_terrain") {
+        crate::world::terrain::spawn_live_terrain(
+            &mut commands,
+            &world,
+            &assets,
+            &mut meshes,
+            &mut terrain_mats,
+        );
+    }
+    if !super::dbg_gate::off("no_water") {
+        crate::world::water::spawn_live_water(
+            &mut commands,
+            &world,
+            &mut meshes,
+            &mut water_mats,
+            &mut images,
+        );
+    }
     // 장식 산포 — GID 기반 결정론(꽃·풀·자갈). 서버 자원 아님(순수 클라이언트 투영).
     // 구조물 청소 반경(3×3)은 제외 — 지붕 위 바위·꽃과 집을 덮는 덤불 방지.
     let structural: std::collections::HashSet<(u16, u16)> = frame
@@ -114,10 +118,16 @@ pub fn prime_live_world(
         .collect();
     let cleared = cleared_tiles(&structural);
     let mut scene_cache = std::collections::HashMap::new();
-    for p in world
-        .decorative_props()
-        .into_iter()
-        .filter(|p| !cleared.contains(&(p.x as i32, p.y as i32)))
+    let deco: Vec<_> = if super::dbg_gate::off("no_deco") {
+        vec![] // 진단 게이트 — 장식 산포 스킵
+    } else {
+        world
+            .decorative_props()
+            .into_iter()
+            .filter(|p| !cleared.contains(&(p.x as i32, p.y as i32)))
+            .collect()
+    };
+    for p in deco
     {
         crate::world::models::spawn_one_prop(
             &mut commands,
@@ -244,7 +254,10 @@ pub fn sync_agents(
         }
         let target = Vec3::new(
             a.x,
-            world.height_at(a.x.floor() as i32, a.y.floor() as i32),
+            // 착지 클램프 — 물 타일 위에서도 수면(-0.18) 아래로 잠기지 않게
+            world
+                .height_at(a.x.floor() as i32, a.y.floor() as i32)
+                .max(-0.14),
             a.y,
         );
         v.to = target;
@@ -262,10 +275,17 @@ pub fn sync_agents(
         if a.kind != "bot" && a.kind != "user" {
             continue;
         }
+        if super::dbg_gate::off("no_villagers") {
+            continue; // 진단 게이트
+        }
         let path = crate::world::villager::model_path_for(&a.id, a.look.as_deref());
         let scene = assets.load(GltfAssetLabel::Scene(0).from_asset(path));
         let gltf = assets.load(path);
-        let ground = world.height_at(a.x.floor() as i32, a.y.floor() as i32);
+        // 착지 클램프 — 서버가 물 타일에 세워도(§17.80 취수) 몸이 불투명
+        // 수면 아래로 잠기지 않게 발을 수면(-0.18) 위로 못 박는다.
+        let ground = world
+            .height_at(a.x.floor() as i32, a.y.floor() as i32)
+            .max(-0.14);
         commands
             .spawn((
                 crate::world::villager::VillagerModel(gltf),

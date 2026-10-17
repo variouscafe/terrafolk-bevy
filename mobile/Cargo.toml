@@ -19,8 +19,8 @@ objc2-avf-audio = { version = "0.3.0", features = [
 ] }
 
 [package.metadata.android]
-package = "me.nikl.bevygame"  # ToDo
-apk_name = "BevyGame"  # ToDo same as GAME_OSX_APP_NAME in release workflow
+package = "com.terrafolk.rust"
+apk_name = "Terrafolk"
 assets = "../assets"
 strip = "strip"
 resources = "../build/android/res"
@@ -31,4 +31,4 @@ target_sdk_version = 35
 
 [package.metadata.android.application]
 icon = "@mipmap/icon"
-label = "Bevy Game" # ToDo
+label = "Terrafolk"

@@ -23,6 +23,8 @@ const ZOOM_SMOOTH: f32 = 9.0;
 /// 정사영 기본 시야 높이(월드 단위) — 줌 1에서 세로로 보이는 폭.
 /// 참조 구도(마을 스케일 — 코티지 4.2m가 화면 세로의 ~20%).
 pub const VIEW_H: f32 = 22.0;
+/// 초상 화면 초기 줌 — 마을 스케일 근접(바다 과다 완화)
+const PORTRAIT_INIT_ZOOM: f32 = 0.62;
 /// 카메라 거리(정사영은 크기 무관 — near/far 클리핑·그림자 프러스텀용).
 /// ⚠ terrain_splat.wgsl의 안개 축 상수(140.0·뷰방향)와 정합 — 변경 시 양쪽 수정.
 const CAM_DIST: f32 = 140.0;
@@ -48,6 +50,9 @@ pub struct CameraRig {
     pub target: Vec2,
     pub zoom: f32,      // 현재(렌더에 적용)
     pub zoom_goal: f32, // 목표(입력 누적)
+    /// 초상(세로) 화면 초기 프레이밍 적용 여부 — 회전 전 창 크기가 가로로
+    /// 먼저 보고되므로 첫 세로 해상도 확정 시 1회만 조정한다.
+    portrait_framed: bool,
 }
 
 impl Default for CameraRig {
@@ -56,6 +61,7 @@ impl Default for CameraRig {
             target: Vec2::splat(super::data::SIZE as f32 / 2.0),
             zoom: 1.0,
             zoom_goal: 1.0,
+            portrait_framed: false,
         }
     }
 }
@@ -219,9 +225,18 @@ pub fn camera_control(
     }
 
     // ── 9) 적용 — 위치·방향·정사영 scale
+    // 초상(세로) 화면 초기 프레이밍 — 35° 정사영은 화면 22m가 지면 ~38m가
+    // 되어 섬 전체+원해가 담겨 '바다가 과다'하게 보인다(2026-10-17 실기 보고).
+    // 세로 화면은 마을 스케일 근접(0.62)로 시작 — 첫 세로 해상도에 1회.
+    if !rig.portrait_framed && window.height() > window.width() {
+        rig.portrait_framed = true;
+        rig.zoom = PORTRAIT_INIT_ZOOM;
+        rig.zoom_goal = PORTRAIT_INIT_ZOOM;
+    }
     tr.translation = pan_offset(&rig);
     tr.look_at(Vec3::new(rig.target.x, 0.0, rig.target.y), Vec3::Y);
     if let Projection::Orthographic(o) = &mut *proj {
         o.scale = rig.zoom;
     }
 }
+

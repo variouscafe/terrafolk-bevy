@@ -45,6 +45,38 @@ const MODELS: [&str; 2] = ["models/VillagerMan.glb", "models/VillagerWoman.glb"]
 /// 룩 해시로 1택. 남성(Sam 단일 메시)엔 해당 없다.
 const HAIR_VARIANTS: [&str; 3] = ["Hair_Blond", "Hair_Brown", "Brown"];
 
+// ── 착의 팔레트 — 프리미티브 재질 베이스컬러 틴트(코지·페인터리 톤) ──
+// 슬롯 매칭: "Casual_Body.White"=셔츠 · "Casual_Legs.Orange"=바지 ·
+// "Casual_Feet.Grey"=신발(엔티티명 "메시.재질" 규칙). 피부·머리 슬롯은 불간섭.
+fn shirt_colors() -> [Color; 8] {
+    [
+        Color::srgb(0.62, 0.28, 0.22), // 벽돌
+        Color::srgb(0.36, 0.46, 0.33), // 세이지
+        Color::srgb(0.24, 0.32, 0.46), // 네이비
+        Color::srgb(0.72, 0.58, 0.26), // 머스터드
+        Color::srgb(0.66, 0.36, 0.42), // 로즈
+        Color::srgb(0.24, 0.46, 0.44), // 청록
+        Color::srgb(0.42, 0.34, 0.50), // 플럼
+        Color::srgb(0.80, 0.74, 0.62), // 크림
+    ]
+}
+fn pants_colors() -> [Color; 5] {
+    [
+        Color::srgb(0.32, 0.24, 0.18), // 갈색
+        Color::srgb(0.22, 0.28, 0.38), // 짙은 청
+        Color::srgb(0.40, 0.36, 0.26), // 카키
+        Color::srgb(0.20, 0.20, 0.22), // 차콜
+        Color::srgb(0.38, 0.24, 0.26), // 버건디
+    ]
+}
+fn shoe_colors() -> [Color; 3] {
+    [
+        Color::srgb(0.14, 0.13, 0.14), // 흑
+        Color::srgb(0.34, 0.24, 0.16), // 갈
+        Color::srgb(0.24, 0.20, 0.18), // 암갈
+    ]
+}
+
 /// 라이브 에이전트용 — lookJson.sex(있으면) 또는 id 해시로 남/여 선택.
 pub fn model_path_for(id: &str, look: Option<&str>) -> &'static str {
     if let Some(look) = look
@@ -120,6 +152,8 @@ pub fn villager_ready(
     mut graphs: ResMut<Assets<AnimationGraph>>,
     meshes: Res<Assets<Mesh>>,
     mut aabb_cache: ResMut<super::models::MeshAabbCache>,
+    mut std_mats: ResMut<Assets<StandardMaterial>>,
+    mat_handles: Query<&MeshMaterial3d<StandardMaterial>>,
     world: Res<super::data::WorldData>,
 ) {
     let Ok((villager, model, tr)) = q_self.get(trigger.entity) else {
@@ -138,6 +172,8 @@ pub fn villager_ready(
         &mut graphs,
         &meshes,
         &mut aabb_cache,
+        &mut std_mats,
+        &mat_handles,
         &world,
     );
     if !done {
@@ -165,6 +201,8 @@ pub fn retry_villager_setup(
     mut graphs: ResMut<Assets<AnimationGraph>>,
     meshes: Res<Assets<Mesh>>,
     mut aabb_cache: ResMut<super::models::MeshAabbCache>,
+    mut std_mats: ResMut<Assets<StandardMaterial>>,
+    mat_handles: Query<&MeshMaterial3d<StandardMaterial>>,
     world: Res<super::data::WorldData>,
 ) {
     for (entity, villager, model, tr, mut pending) in &mut q {
@@ -187,6 +225,8 @@ pub fn retry_villager_setup(
             &mut graphs,
             &meshes,
             &mut aabb_cache,
+            &mut std_mats,
+            &mat_handles,
             &world,
         );
         if done {
@@ -212,6 +252,8 @@ fn finish_villager_setup(
     graphs: &mut Assets<AnimationGraph>,
     meshes: &Assets<Mesh>,
     aabb_cache: &mut super::models::MeshAabbCache,
+    std_mats: &mut Assets<StandardMaterial>,
+    mat_handles: &Query<&MeshMaterial3d<StandardMaterial>>,
     world: &super::data::WorldData,
 ) -> bool {
     let Some(gltf) = gltfs.get(&model.0) else {
@@ -233,6 +275,39 @@ fn finish_villager_setup(
             {
                 commands.entity(child).despawn();
             }
+        }
+    }
+    // ── 착의 틴트 — 옷 슬롯 재질을 주민별 고유 복제로 교체(lookJson 해시 색).
+    // 주민별 고유 재질은 오토 인스턴싱 배칭을 의도적으로 분리한다 — 모바일
+    // WebGL2에서 다중 스키닝 메시 배칩이 조인트 행렬을 섞어 '뼈'처럼 뭉개지는
+    // 회귀의 1차 회피책(주민 수십 개 드로우콜 — 비용 무시 가능).
+    {
+        let seed = model.1.as_deref().unwrap_or("");
+        let h = seed.bytes().fold(0u64, |a, b| a.wrapping_mul(31) + b as u64);
+        let slots: [(&str, Color); 3] = [
+            ("Casual_Body.White", shirt_colors()[(h.wrapping_mul(0x9E37) % 8) as usize]),
+            ("Casual_Legs.Orange", pants_colors()[(h.wrapping_mul(0x85EB) % 5) as usize]),
+            ("Casual_Feet.Grey", shoe_colors()[(h.wrapping_mul(0xC2B2) % 3) as usize]),
+        ];
+        for child in children.iter_descendants(entity) {
+            let Ok((Some(name), _, _, _, _)) = q_walk.get(child) else {
+                continue;
+            };
+            let Some(tint) = slots.iter().find(|(slot, _)| name.as_str() == *slot).map(|(_, c)| *c)
+            else {
+                continue;
+            };
+            let Ok(handle) = mat_handles.get(child) else {
+                continue;
+            };
+            let Some(m) = std_mats.get(&handle.0) else {
+                continue;
+            };
+            let mut clone = m.clone();
+            clone.base_color = tint; // 단색 슬롯 — 직접 지정(피부·머리 불간섭)
+            commands
+                .entity(child)
+                .insert(MeshMaterial3d(std_mats.add(clone)));
         }
     }
     // Walk/Idle 클립 검색 — 접미 매칭(프리픽스는 모델별 상이)
